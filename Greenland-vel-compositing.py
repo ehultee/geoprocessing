@@ -64,8 +64,50 @@ gl_gid_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-GlacierIDs'
 sf_ref = shapefile.Reader(gl_gid_fldr+'/GlacierIDs_v01_2') #Specify the base filename of the group of files that makes up a shapefile
 
 
-#Velocity field 2016-2017
-print 'Reading in MEaSUREs 2016-2017 velocities'
+##Reading in velocities
+##Function to read MEaSUREs velocity GeoTIFFs
+def read_velocities(filename, return_grid=True):
+    """Extract x, y, v from a MEaSUREs GeoTIFF"""
+    ds = gdal.Open(filename)
+    #Get dimensions
+    nc = ds.RasterXSize
+    nr = ds.RasterYSize
+    
+    geotransform = ds.GetGeoTransform()
+    xOrigin = geotransform[0]
+    xPix = geotransform[1] #pixel width in x-direction
+    yOrigin = geostransform[3]
+    yPix = geotransform[5] #pixel height in y-direction
+    
+    lons = xOrigin + np.arange(0, nc)*xPix
+    lats = yOrigin + np.arange(0, nr)*yPix
+    
+    x, y = np.meshgrid(lons, lats)
+    
+    vband = ds.GetRasterBand(1)
+    varr = vband.ReadAsArray()
+    
+    if return_grid:
+        return x, y, varr
+    else: 
+        return varr
+
+##Folder where MEaSUREs velocity files live
 gl_v_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-velocities'
-vpath_1617 = gl_v_fldr+'greenland_vel_mosaic200_2016_2017_vel_v2.tif'
-v_1617 = gdal.Open(vpath_1617, load_data=False)
+#Names of velocity TIFFs for 2016-2017
+vpath_1617 = gl_v_fldr+'/greenland_vel_mosaic500_2016_2017_vel_v2.tif'
+vxpath_1617 = gl_v_fldr+'/greenland_vel_mosaic500_2016_2017_vx_v2.tif'
+vypath_1617 = gl_v_fldr+'/greenland_vel_mosaic500_2016_2017_vy_v2.tif'
+#Names of velocity TIFFs for 2000-2001
+vpath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vel_v2.tif'
+vxpath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vx_v2.tif'
+vypath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vy_v2.tif'
+
+print 'Reading in MEaSUREs 2016-2017 velocities'
+vel_1617 = read_velocities(vpath_1617) 
+vx_1617 = read_velocities(vxpath_1617)
+vy_1617 = read_velocities(vypath_1617)
+print 'Reading in MEaSUREs 2000-2001 velocities'
+vel_0001 = read_velocities(vpath_0001) 
+vx_0001 = read_velocities(vxpath_0001)
+vy_0001 = read_velocities(vypath_0001)
