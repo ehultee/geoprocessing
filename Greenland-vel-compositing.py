@@ -6,11 +6,12 @@ from netCDF4 import Dataset
 from osgeo import gdal
 import sys #allowing GDAL to throw Python exceptions
 import numpy as np
+import pandas as pd #want to treat velocity maps as Pandas dataframes
 import matplotlib.pyplot as plt
 import csv
 import collections
 import shapefile
-#from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm
 from matplotlib import cm
 #from shapely.geometry import *
 from scipy import interpolate
@@ -76,7 +77,7 @@ def read_velocities(filename, return_grid=True):
     geotransform = ds.GetGeoTransform()
     xOrigin = geotransform[0]
     xPix = geotransform[1] #pixel width in x-direction
-    yOrigin = geostransform[3]
+    yOrigin = geotransform[3]
     yPix = geotransform[5] #pixel height in y-direction
     
     lons = xOrigin + np.arange(0, nc)*xPix
@@ -104,10 +105,46 @@ vxpath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vx_v2.tif'
 vypath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vy_v2.tif'
 
 print 'Reading in MEaSUREs 2016-2017 velocities'
-vel_1617 = read_velocities(vpath_1617) 
-vx_1617 = read_velocities(vxpath_1617)
-vy_1617 = read_velocities(vypath_1617)
+x_1617, y_1617, vel_1617 = read_velocities(vpath_1617) 
+v_1617 = np.ma.masked_less(vel_1617, 0)
+vx_1617 = read_velocities(vxpath_1617, return_grid=False)
+vy_1617 = read_velocities(vypath_1617, return_grid=False)
 print 'Reading in MEaSUREs 2000-2001 velocities'
-vel_0001 = read_velocities(vpath_0001) 
-vx_0001 = read_velocities(vxpath_0001)
-vy_0001 = read_velocities(vypath_0001)
+x_0001, y_0001, vel_0001 = read_velocities(vpath_0001) 
+v_0001 = np.ma.masked_less(vel_0001, 0)
+vx_0001 = read_velocities(vxpath_0001, return_grid=False)
+vy_0001 = read_velocities(vypath_0001, return_grid=False)
+
+
+###Overlay to check alignment
+#print 'Check figure to confirm overlays line up'
+#plt.figure()
+#plt.contour(x_1617, y_1617, v_1617, cmap='viridis', norm=LogNorm(vmin=v_1617.min(), vmax=v_1617.max()))
+#plt.contour(x_0001, y_0001, v_0001, cmap='Greys', norm=LogNorm(vmin=v_0001.min(), vmax=v_0001.max()), alpha=0.5)
+#plt.show()
+##Alignment check passed for 2000-2001 and 2016-2017 sets
+
+##Constructing new velocity composite with 2000 termini and 2016 coverage
+vx_1617_ma = np.ma.masked_less(vx_1617, -1e09) #masking missing values so that fill will work properly
+vy_1617_ma = np.ma.masked_less(vy_1617, -1e09)
+vx_0001_ma = np.ma.masked_less(vx_0001, -1e09)
+vy_0001_ma = np.ma.masked_less(vy_0001, -1e09)
+
+df_vx_1617 = pd.DataFrame(vx_1617_ma, index=y_1617[:,0], columns=x_1617[0,:]) 
+df_vy_1617 = pd.DataFrame(vy_1617_ma, index=y_1617[:,0], columns=x_1617[0,:])
+df_v_1617 = pd.DataFrame(v_1617, index=y_1617[:,0], columns=x_1617[0,:]) #speed (magnitude of velocity) for sanity check
+df_vx_0001 = pd.DataFrame(vx_0001_ma, index=y_0001[:,0], columns=x_0001[0,:])
+df_vy_0001 = pd.DataFrame(vy_0001_ma, index=y_0001[:,0], columns=x_0001[0,:])
+df_v_0001 = pd.DataFrame(v_0001, index=y_0001[:,0], columns=x_0001[0,:]) #speed (magnitude of velocity) for sanity check
+
+df_vx_comp = df_vx_1617.combine_first(df_vx_0001) #creating composite from Pandas dataframes
+df_vy_comp = df_vy_1617.combine_first(df_vy_0001)
+df_v_comp = df_v_1617.combine_first(df_v_0001)
+
+vx_comp = df_vx_comp.values
+vy_comp = df_vy_comp.values
+v_comp = df_v_comp.values
+x_comp = df_v_comp.columns #pulling out x, y grid for composite
+y_comp = df_v_comp.index
+
+
