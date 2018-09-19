@@ -64,6 +64,30 @@ print 'Reading in MEaSUREs reference file'
 gl_gid_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-GlacierIDs'
 sf_ref = shapefile.Reader(gl_gid_fldr+'/GlacierIDs_v01_2') #Specify the base filename of the group of files that makes up a shapefile
 
+## Terminus positions - 2005 for most complete/advanced
+print 'Reading in MEaSUREs termini for year 2005'
+gl_termpos_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-termini'
+sf_termpos = shapefile.Reader(gl_termpos_fldr+'/termini_0506_v01_2') #Specify the base filename of the group of files that makes up a shapefile
+term_recs = sf_termpos.records()
+term_pts_dict = {}
+keys = []
+for j,r in enumerate(term_recs):
+    key = r[1] #MEaSUREs ID number for the glacier
+    keys.append(key)
+    index = j #index within this shapefile, not necessarily same as ID
+    term_pts_dict[key] = np.asarray(sf_termpos.shapes()[index].points) #save points spanning terminus to dictionary
+
+##Plot to check termini
+plt.figure()
+for k in keys:
+    pts = term_pts_dict[k]
+    plt.scatter(pts[:,0], pts[:,1])
+    plt.annotate(str(k), pts[0]) #annotate the first point of each terminus set with the MEaSUREs ID of the glacier
+plt.show()
+    
+    
+
+
 
 ##Reading in velocities
 ##Function to read MEaSUREs velocity GeoTIFFs
