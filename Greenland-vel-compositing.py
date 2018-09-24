@@ -67,31 +67,31 @@ sf_ref = shapefile.Reader(gl_gid_fldr+'/GlacierIDs_v01_2') #Specify the base fil
 ## Terminus positions - 2005 for most complete/advanced
 print 'Reading in MEaSUREs termini for year 2005'
 gl_termpos_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-termini'
+sf_termpos_1617 = shapefile.Reader(gl_termpos_fldr+'/termini_1617_v01_2')
 sf_termpos = shapefile.Reader(gl_termpos_fldr+'/termini_0506_v01_2') #Specify the base filename of the group of files that makes up a shapefile
 term_recs = sf_termpos.records()
 term_pts_dict = {}
-keys = []
 for j,r in enumerate(term_recs):
     key = r[1] #MEaSUREs ID number for the glacier
-    keys.append(key)
     index = j #index within this shapefile, not necessarily same as ID
     term_pts_dict[key] = np.asarray(sf_termpos.shapes()[index].points) #save points spanning terminus to dictionary
 
-##Plot to check termini
-plt.figure()
-for k in keys:
-    pts = term_pts_dict[k]
-    plt.scatter(pts[:,0], pts[:,1])
-    plt.annotate(str(k), pts[0]) #annotate the first point of each terminus set with the MEaSUREs ID of the glacier
-plt.show()
-    
+###Plot to check termini--overlay with velocity below if you are interested in intersection
+#keys = term_pts_dict.keys()
+#plt.figure()
+#for k in keys:
+#    pts = term_pts_dict[k]
+#    plt.scatter(pts[:,0], pts[:,1])
+#    plt.annotate(str(k), pts[0]) #annotate the first point of each terminus set with the MEaSUREs ID of the glacier
+#plt.show()
+#    
     
 
 
 
 ##Reading in velocities
 ##Function to read MEaSUREs velocity GeoTIFFs
-def read_velocities(filename, return_grid=True):
+def read_velocities(filename, return_grid=True, return_proj=False):
     """Extract x, y, v from a MEaSUREs GeoTIFF"""
     ds = gdal.Open(filename)
     #Get dimensions
@@ -112,6 +112,9 @@ def read_velocities(filename, return_grid=True):
     vband = ds.GetRasterBand(1)
     varr = vband.ReadAsArray()
     
+    #if return_grid and return_proj:
+    #    return x, y, varr, ds.GetProjection()
+    #elif return_grid:
     if return_grid:
         return x, y, varr
     else: 
@@ -129,7 +132,7 @@ vxpath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vx_v2.tif'
 vypath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vy_v2.tif'
 
 print 'Reading in MEaSUREs 2016-2017 velocities'
-x_1617, y_1617, vel_1617 = read_velocities(vpath_1617) 
+x_1617, y_1617, vel_1617 = read_velocities(vpath_1617, return_proj=False) 
 v_1617 = np.ma.masked_less(vel_1617, 0)
 vx_1617 = read_velocities(vxpath_1617, return_grid=False)
 vy_1617 = read_velocities(vypath_1617, return_grid=False)
@@ -171,4 +174,63 @@ v_comp = df_v_comp.values
 x_comp = df_v_comp.columns #pulling out x, y grid for composite
 y_comp = df_v_comp.index
 
+
+## Write composited velocities to a GeoTIFF of similar format
+def write_velocities(field, x_arr, y_arr, base_ds, outfn):
+    """Uses GDAL to write a GeoTIFF of MEaSUREs velocities
+    Arguments:
+        field: variable name of the field to write to file
+        x_arr: x-coordinates of field to be written (1D array)
+        y_arr: y-coordinates of field to be written (1D array)
+        base_ds: dataset used as base field for compositing
+        outfn: output filename (give full path)
+    """
+    [cols, rows] = shape(field)
+    
+    ##setting up geotransform for composite dataset
+    #gt = [x_arr[0], #xOrigin
+    #mean(diff(x_arr)), #width of pixels in x-direction
+    #0, #x-rotation of pixels w.r.t "north=up"
+    #y_arr[0], #yOrigin
+    #0, #y-rotation of pixels w.r.t. "north=up"
+    #mean(diff(y_arr)) #height of pixels in y-direction
+    #]
+    
+    gt = base_ds.GetGeoTransform()
+    projection = base_ds.GetProjection()
+    
+    #setting up GDAL writer
+    driver = gdal.GetDriverByName("GTiff")
+    out_ds = driver.Create(outfn, rows, cols, 1, gdal.GDT_Float64)
+    out_ds.SetGeoTransform(gt) #sets geotransform of output
+    out_ds.SetProjection(projection) #sets projection to match input
+    out_ds.GetRasterBand(1).WriteArray(field)
+    out_ds.GetRasterBand(1).SetNoDataValue(-2e09) #same nodata value as MEaSUREs input
+    
+    print 'Writing to output file {}'.format(outfn)
+    out_ds.FlushCache() #save to disk
+    
+    out_ds = None #release memory
+
+
+v_composite_outfn = 'Documents/GitHub/gld-velocity-composite.tif'
+vx_composite_outfn = 'Documents/GitHub/gld-x_velocity-composite.tif'
+vy_composite_outfn = 'Documents/GitHub/gld-y_velocity-composite.tif'
+
+base_ds_1617 = gdal.Open(vpath_1617)
+
+write_velocities(v_comp, x_comp, y_comp, base_ds_1617, v_composite_outfn)
+write_velocities(vx_comp, x_comp, y_comp, base_ds_1617, vx_composite_outfn)
+write_velocities(vy_comp, x_comp, y_comp, base_ds_1617, vy_composite_outfn)
+
+## Test that what's been written comes back correctly
+
+x_read, y_read, vcomp_read = read_velocities('Documents/GitHub/gld-velocity-composite.tif')
+
+print 'Testing read/write of composite set'
+print 'Shape of composite: {}. Shape of read-in: {}.'.format(shape(v_comp), shape(vcomp_read))
+print 'Testing min, max, mean value equivalence'
+print nanmin(v_comp)==nanmin(vcomp_read)
+print nanmax(vcomp_read)==nanmax(v_comp)
+print nanmean(vcomp_read)-nanmean(v_comp) <1e-6
 
