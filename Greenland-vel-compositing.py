@@ -1,5 +1,6 @@
 ## Compositing MEaSUREs velocity datasets to use with network selection algorithm
 ## 17 Sept 2018  EHU
+## Edit 10 Jan 2019: adding another layer to composite - handle networks off previous map
 
 
 from netCDF4 import Dataset
@@ -121,7 +122,7 @@ def read_velocities(filename, return_grid=True, return_proj=False):
         return varr
 
 ##Folder where MEaSUREs velocity files live
-gl_v_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-velocities'
+gl_v_fldr = 'Documents/GitHub/Data_unsynced/MEaSUREs-velocities'
 #Names of velocity TIFFs for 2016-2017
 vpath_1617 = gl_v_fldr+'/greenland_vel_mosaic500_2016_2017_vel_v2.tif'
 vxpath_1617 = gl_v_fldr+'/greenland_vel_mosaic500_2016_2017_vx_v2.tif'
@@ -130,6 +131,10 @@ vypath_1617 = gl_v_fldr+'/greenland_vel_mosaic500_2016_2017_vy_v2.tif'
 vpath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vel_v2.tif'
 vxpath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vx_v2.tif'
 vypath_0001 = gl_v_fldr+'/greenland_vel_mosaic500_2000_2001_vy_v2.tif'
+#Names of velocity TIFFs for 2005-2006 ##added to stack 10 Jan 2019
+vpath_0506 = gl_v_fldr+'/greenland_vel_mosaic500_2005_2006_vv_v02_1.tif'
+vxpath_0506 = gl_v_fldr+'/greenland_vel_mosaic500_2005_2006_vx_v02_1.tif'
+vypath_0506 = gl_v_fldr+'/greenland_vel_mosaic500_2005_2006_vy_v02_1.tif'
 
 print 'Reading in MEaSUREs 2016-2017 velocities'
 x_1617, y_1617, vel_1617 = read_velocities(vpath_1617, return_proj=False) 
@@ -141,7 +146,11 @@ x_0001, y_0001, vel_0001 = read_velocities(vpath_0001)
 v_0001 = np.ma.masked_less(vel_0001, 0)
 vx_0001 = read_velocities(vxpath_0001, return_grid=False)
 vy_0001 = read_velocities(vypath_0001, return_grid=False)
-
+print 'Reading in MEaSUREs 2005-2006 velocities'
+x_0506, y_0506, vel_0506 = read_velocities(vpath_0506, return_proj=False)
+v_0506 = np.ma.masked_less(vel_0506, 0)
+vx_0506 = read_velocities(vxpath_0506, return_grid=False)
+vy_0506 = read_velocities(vypath_0506, return_grid=False)
 
 ###Overlay to check alignment
 #print 'Check figure to confirm overlays line up'
@@ -156,6 +165,8 @@ vx_1617_ma = np.ma.masked_less(vx_1617, -1e09) #masking missing values so that f
 vy_1617_ma = np.ma.masked_less(vy_1617, -1e09)
 vx_0001_ma = np.ma.masked_less(vx_0001, -1e09)
 vy_0001_ma = np.ma.masked_less(vy_0001, -1e09)
+vx_0506_ma = np.ma.masked_less(vx_0506, -1e09)
+vy_0506_ma = np.ma.masked_less(vy_0506, -1e09)
 
 df_vx_1617 = pd.DataFrame(vx_1617_ma, index=y_1617[:,0], columns=x_1617[0,:]) 
 df_vy_1617 = pd.DataFrame(vy_1617_ma, index=y_1617[:,0], columns=x_1617[0,:])
@@ -163,10 +174,19 @@ df_v_1617 = pd.DataFrame(v_1617, index=y_1617[:,0], columns=x_1617[0,:]) #speed 
 df_vx_0001 = pd.DataFrame(vx_0001_ma, index=y_0001[:,0], columns=x_0001[0,:])
 df_vy_0001 = pd.DataFrame(vy_0001_ma, index=y_0001[:,0], columns=x_0001[0,:])
 df_v_0001 = pd.DataFrame(v_0001, index=y_0001[:,0], columns=x_0001[0,:]) #speed (magnitude of velocity) for sanity check
+df_vx_0506 = pd.DataFrame(vx_0506_ma, index=y_0506[:,0], columns=x_0506[0,:])
+df_vy_0506 = pd.DataFrame(vy_0506_ma, index=y_0506[:,0], columns=x_0506[0,:])
+df_v_0506 = pd.DataFrame(v_0506_ma, index=y_0506[:,0], columns=x_0506[0,:])
 
-df_vx_comp = df_vx_1617.combine_first(df_vx_0001) #creating composite from Pandas dataframes
-df_vy_comp = df_vy_1617.combine_first(df_vy_0001)
-df_v_comp = df_v_1617.combine_first(df_v_0001)
+##preliminary stack: prioritize 0001, since these were values originally used
+df_vxc_prelim = df_vx_0001.combine_first(df_vx_0506)
+df_vyc_prelim = df_vy_0001.combine_first(df_vy_0506)
+df_vc_prelim = df_v_0001.combine_first(df_v_0506)
+
+## second stack: prioritize 1617, then 0001, then 0506 for completeness
+df_vx_comp = df_vx_1617.combine_first(df_vxc_prelim) #creating composite from Pandas dataframes, values from 2016-2017 prioritized
+df_vy_comp = df_vy_1617.combine_first(df_vyc_prelim)
+df_v_comp = df_v_1617.combine_first(df_vc_prelim)
 
 vx_comp = df_vx_comp.values
 vy_comp = df_vy_comp.values
@@ -213,9 +233,9 @@ def write_velocities(field, x_arr, y_arr, base_ds, outfn):
     out_ds = None #release memory
 
 
-v_composite_outfn = 'Documents/GitHub/gld-velocity-composite.tif'
-vx_composite_outfn = 'Documents/GitHub/gld-x_velocity-composite.tif'
-vy_composite_outfn = 'Documents/GitHub/gld-y_velocity-composite.tif'
+v_composite_outfn = 'Documents/GitHub/Data_unsynced/gld-velocity-composite-10Jan19.tif'
+vx_composite_outfn = 'Documents/GitHub/Data_unsynced/gld-x_velocity-composite-10Jan19.tif'
+vy_composite_outfn = 'Documents/GitHub/Data_unsynced/gld-y_velocity-composite-10Jan19.tif'
 
 base_ds_1617 = gdal.Open(vpath_1617)
 
@@ -225,7 +245,7 @@ write_velocities(vy_comp, x_comp, y_comp, base_ds_1617, vy_composite_outfn)
 
 ## Test that what's been written comes back correctly
 
-x_read, y_read, vcomp_read = read_velocities('Documents/GitHub/gld-velocity-composite.tif')
+x_read, y_read, vcomp_read = read_velocities('Documents/GitHub/gld-velocity-composite-10Jan19.tif')
 
 print 'Testing read/write of composite set'
 print 'Shape of composite: {}. Shape of read-in: {}.'.format(shape(v_comp), shape(vcomp_read))
