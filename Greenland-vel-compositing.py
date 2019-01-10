@@ -62,12 +62,12 @@ B_interp = interpolate.RectBivariateSpline(X, Y[::-1], smoothB.T[::, ::-1])
 
 #Reference set indicating where each glacier is
 print 'Reading in MEaSUREs reference file' 
-gl_gid_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-GlacierIDs'
+gl_gid_fldr = 'Documents/GitHub/Data_unsynced/MEaSUREs-GlacierIDs'
 sf_ref = shapefile.Reader(gl_gid_fldr+'/GlacierIDs_v01_2') #Specify the base filename of the group of files that makes up a shapefile
 
 ## Terminus positions - 2005 for most complete/advanced
 print 'Reading in MEaSUREs termini for year 2005'
-gl_termpos_fldr = 'Documents/GitHub/plastic-networks/Data/MEaSUREs-termini'
+gl_termpos_fldr = 'Documents/GitHub/Data_unsynced/MEaSUREs-termini'
 sf_termpos_1617 = shapefile.Reader(gl_termpos_fldr+'/termini_1617_v01_2')
 sf_termpos = shapefile.Reader(gl_termpos_fldr+'/termini_0506_v01_2') #Specify the base filename of the group of files that makes up a shapefile
 term_recs = sf_termpos.records()
