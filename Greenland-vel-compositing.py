@@ -176,7 +176,7 @@ df_vy_0001 = pd.DataFrame(vy_0001_ma, index=y_0001[:,0], columns=x_0001[0,:])
 df_v_0001 = pd.DataFrame(v_0001, index=y_0001[:,0], columns=x_0001[0,:]) #speed (magnitude of velocity) for sanity check
 df_vx_0506 = pd.DataFrame(vx_0506_ma, index=y_0506[:,0], columns=x_0506[0,:])
 df_vy_0506 = pd.DataFrame(vy_0506_ma, index=y_0506[:,0], columns=x_0506[0,:])
-df_v_0506 = pd.DataFrame(v_0506_ma, index=y_0506[:,0], columns=x_0506[0,:])
+df_v_0506 = pd.DataFrame(v_0506, index=y_0506[:,0], columns=x_0506[0,:])
 
 ##preliminary stack: prioritize 0001, since these were values originally used
 df_vxc_prelim = df_vx_0001.combine_first(df_vx_0506)
@@ -245,7 +245,7 @@ write_velocities(vy_comp, x_comp, y_comp, base_ds_1617, vy_composite_outfn)
 
 ## Test that what's been written comes back correctly
 
-x_read, y_read, vcomp_read = read_velocities('Documents/GitHub/gld-velocity-composite-10Jan19.tif')
+x_read, y_read, vcomp_read = read_velocities('Documents/GitHub/Data_unsynced/gld-velocity-composite-10Jan19.tif')
 
 print 'Testing read/write of composite set'
 print 'Shape of composite: {}. Shape of read-in: {}.'.format(shape(v_comp), shape(vcomp_read))
