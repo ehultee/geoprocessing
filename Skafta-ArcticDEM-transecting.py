@@ -107,7 +107,7 @@ class Ice(object):
         youngmod = 3E9 Pa, Young's modulus of ice (Reeh et al 2003, can replace for other estimates)
         poisson_nu = 0.5, Poisson's ratio for viscoelastic ice
     """
-    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 3E9, poisson_nu = 0.5):
+    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 9E9, poisson_nu = 0.5):
         self.g = g
         self.rho_ice = rho_ice
         self.youngmod = youngmod
@@ -164,7 +164,7 @@ class Cauldron(Ice):
         
         
     
-initial_surf = np.mean(sevals_2012) #surface elevation before loading
+initial_surf = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
 ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius = 0.5*transect_length)
 
 x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints)
@@ -176,13 +176,18 @@ elas_profile_array = [ESkafta.elastic_profile(x) for x in x_cylcoords]
 plt.figure()
 plt.plot(xaxis, sevals_2012, color='k', ls='-.', label='15 Oct 2012')
 plt.plot(xaxis, sevals_2015, color='k', ls='-', label='10 Oct 2015')
-plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Pure elastic beam')
+plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
 plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
 plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+plt.legend(loc='lower right')
 plt.axes().set_aspect(5)
 plt.axes().set_xlim(0, transect_length)
-plt.axes().set_yticks([1550, 1600, 1650, 1700])
-plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+#plt.axes().set_yticks([1550, 1600, 1650, 1700])
+#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+plt.axes().tick_params(which='both', labelsize=14)
 plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+plt.axes().set_xlabel('Along-transect distance [km]', fontsize=16)
+plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
+plt.title('Eastern Skafta cauldron transect: observed vs. ideal elastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
 plt.show()
 #plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
