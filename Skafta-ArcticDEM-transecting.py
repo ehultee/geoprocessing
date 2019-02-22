@@ -107,23 +107,24 @@ class Ice(object):
     Default values:
         g = 9.8 m/s^2, accel due to gravity
         rho_ice = 920.0 kg m^-3, density of glacier ice
-        youngmod = 3E9 Pa, Young's modulus of ice (Reeh et al 2003, can replace for other estimates)
+        youngmod = 9E9 Pa, Young's modulus of ice (many estimates, see e.g. 9E9 in Reeh 2003)
         poisson_nu = 0.5, Poisson's ratio for viscoelastic ice
         dyn_viscos = 1E14 Pa s, dynamic viscosity of glacier ice
-        shearmod = 3.46E9 Pa, shear modulus of glacier ice
-        lame_lambda = 5.19E9 Pa, first Lame parameter of glacier ice
+        #shearmod = 3.46E9 Pa, shear modulus of glacier ice (currently set in terms of Young's modulus, Poisson's ratio)
+        #lame_lambda = 5.19E9 Pa, first Lame parameter of glacier ice (currently set in terms of Young's modulus, Poisson's ratio)
     Other attributes:
         t_relax: Maxwell relaxation timescale 
     """
-    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 9E9, poisson_nu = 0.5, dyn_viscos = 1E14, shearmod=3.46E9, lame_lambda=5.19E9):
+    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 9E9, poisson_nu = 0.3, dyn_viscos = 1E14):
         self.g = g
         self.rho_ice = rho_ice
         self.youngmod = youngmod
         self.poisson_nu = poisson_nu
         self.dyn_viscos = dyn_viscos
-        self.shearmod = shearmod
-        self.lame_lambda = lame_lambda
-        self.t_relax = dyn_viscos/shearmod
+        self.shearmod = self.youngmod / (2*(1+self.poisson_nu))
+        self.lame_lambda = (self.youngmod * self.poisson_nu)/((1+self.poisson_nu)*(1-2*self.poisson_nu))
+        self.t_relax = dyn_viscos/self.shearmod
+
         
 class Cauldron(Ice):
     """Consistent simulation of elastic or viscoelastic cauldron collapse.
@@ -164,7 +165,7 @@ class Cauldron(Ice):
         if loading is None:
             loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
             
-        LL_beta = 3 * self.rho_ice * self.g *(1-self.poisson_nu**2) / (16 * self.thickness**2 * self.youngmod)
+        LL_beta = 3 * loading *(1-self.poisson_nu**2) / (16 * self.thickness**3 * self.youngmod)
         
         LL_disp = LL_beta * (self.radius**2 - r**2)**2
         
@@ -192,27 +193,31 @@ class Cauldron(Ice):
         
         return hookean_stress
     
-    def viscoelastic_bendingmod(self, t0):
-        """Compute viscoelastic (time-dependent) bending modulus by taking inverse Laplace transform of laplace_transformed_D.
+    def set_viscoelastic_bendingmod(self):
+        """Construct time-dependent function viscoelastic (time-dependent) bending modulus by taking inverse Laplace transform of laplace_transformed_D.
         t0: time at which to evaluate"""
         s = Symbol('s') #Laplace variable s, to be used in SymPy computation
-        #lambda_bar = self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s))) #transformed Lame lambda
-        #mu_bar = (self.t_relax * s /(1 + self.t_relax * s))*self.shearmod #transformed Lame mu (shear mod)
+        t = Symbol('t', positive=True)
+        laml = Symbol('laml', positive=True) #stand-in symbol for lame_lambda
+        m = Symbol('m', positive=True) #stand-in symbol for shearmod
+        tr = Symbol('tr', positive=True) #stand-in symbol for t_relax
+        h = Symbol('h', positive=True) #stand-in symbol for thickness
+        
+        lambda_bar = laml + (2*m / (3*(1 + tr * s))) #transformed Lame lambda
+        mu_bar = (tr * s /(1 + tr * s))*m #transformed Lame mu (shear mod)
         
         #self.lambda_bar = lambda_bar
         #self.mu_bar = mu_bar
         
-        #youngmod_bar = 2*mu_bar + (mu_bar*lambda_bar / (mu_bar + lambda_bar))
-        #poisson_bar = lambda_bar / (2*(mu_bar + lambda_bar))
+        youngmod_bar = 2*mu_bar + (mu_bar*lambda_bar / (mu_bar + lambda_bar))
+        poisson_bar = lambda_bar / (2*(mu_bar + lambda_bar))
         
-        #bending_mod_bar = youngmod_bar * self.thickness**3 / (12*(1-poisson_bar**2))
-        
-        ## bending_mod_bar explicit with respect to Laplace s behaves better in inverse_laplace_transform
-        bending_mod_bar = (2*(self.t_relax * s /(1 + self.t_relax * s))*self.shearmod) + ((self.t_relax * s /(1 + self.t_relax * s))*self.shearmod)*(self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))) / ((self.t_relax * s /(1 + self.t_relax * s))*self.shearmod) + (self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))) * self.thickness**3 / (12*(1-((self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))) / (2*((self.t_relax * s /(1 + self.t_relax * s))*self.shearmod) + (self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))))))**2)
-        
+        bending_mod_bar = youngmod_bar * h**3 / (12*(1-poisson_bar**2))
+                
         symbolic_ve_D = inverse_laplace_transform(bending_mod_bar/s, s, t) #construct viscoelastic D(t) through SymPy inverse Laplace transform
-        
-        return symbolic_ve_D.subs(t, t0) #evaluate D(t) at point t0 as expected
+        self.symbolic_ve_D = lambda t0: symbolic_ve_D.subs(((laml, self.lame_lambda), (m, self.shearmod), (tr, self.t_relax), (h, self.thickness), (t, t0)))
+        #return symbolic_ve_D.subs(((t, t0), (laml, self.lame_lambda), (m, self.shearmod), (tr, self.t_relax), (h, self.thickness))) #evaluate D(t) at point t0 as expected
+    
     
     def viscoelastic_deformation(self, x, t0, loading=None):
         if loading is None:
@@ -233,7 +238,7 @@ x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints
 stress_array = [ESkafta.elastic_stress(x) for x in x_cylcoords]
 elas_profile_array = [ESkafta.elastic_profile(x) for x in x_cylcoords]
 LL_profile_array = [ESkafta.LL_profile(x) for x in x_cylcoords]
-ve_profile_series = [[ESkafta.viscoelastic_profile(x, t) for x in x_cylcoords] for t in (10,)]
+ve_profile_series = [[ESkafta.viscoelastic_profile(x, 0) for x in x_cylcoords]]
 
 ## Make figure
 plt.figure()
