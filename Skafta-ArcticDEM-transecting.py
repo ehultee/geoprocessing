@@ -8,8 +8,11 @@ from scipy import interpolate
 from scipy.ndimage import gaussian_filter
 from osgeo import gdal
 from netCDF4 import Dataset
-import shapefile
-import datetime
+from sympy.integrals.transforms import inverse_laplace_transform
+from sympy import Symbol
+from sympy.abc import s, t
+#import shapefile
+#import datetime
 import matplotlib.pyplot as plt
 import math
 #from matplotlib.colors import LogNorm
@@ -106,12 +109,21 @@ class Ice(object):
         rho_ice = 920.0 kg m^-3, density of glacier ice
         youngmod = 3E9 Pa, Young's modulus of ice (Reeh et al 2003, can replace for other estimates)
         poisson_nu = 0.5, Poisson's ratio for viscoelastic ice
+        dyn_viscos = 1E14 Pa s, dynamic viscosity of glacier ice
+        shearmod = 3.46E9 Pa, shear modulus of glacier ice
+        lame_lambda = 5.19E9 Pa, first Lame parameter of glacier ice
+    Other attributes:
+        t_relax: Maxwell relaxation timescale 
     """
-    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 9E9, poisson_nu = 0.5):
+    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 9E9, poisson_nu = 0.5, dyn_viscos = 1E14, shearmod=3.46E9, lame_lambda=5.19E9):
         self.g = g
         self.rho_ice = rho_ice
         self.youngmod = youngmod
         self.poisson_nu = poisson_nu
+        self.dyn_viscos = dyn_viscos
+        self.shearmod = shearmod
+        self.lame_lambda = lame_lambda
+        self.t_relax = dyn_viscos/shearmod
         
 class Cauldron(Ice):
     """Consistent simulation of elastic or viscoelastic cauldron collapse.
@@ -120,7 +132,8 @@ class Cauldron(Ice):
         thickness: ice thickness of collapsing portion in m.  Default 300 m (for Skafta)
         radius: radius of cauldron in m.  Default 1500 m (for Skafta) but should be set by observations for best match
         initial_surface: the mean initial surface elevation from which displacement should be calculated.  Default 1000m
-        bending_mod: bending modulus in Pa m^3.  Calculated from other inputs.
+        bending_mod: (elastic) bending modulus in Pa m^3.  Calculated from other inputs.
+    Inherits material properties from class Ice.
     """
     def __init__(self, name='Cauldron', thickness=300, radius=1500, initial_surface=1000):
         Ice.__init__(self) #inherit quantities from Ice
@@ -159,10 +172,40 @@ class Cauldron(Ice):
         
         return hookean_stress
     
-    def ve_deformation(self):
-        pass
+    
+    def viscoelastic_bendingmod(self, t0):
+        """Compute viscoelastic (time-dependent) bending modulus by taking inverse Laplace transform of laplace_transformed_D.
+        t0: time at which to evaluate"""
+        s = Symbol('s') #Laplace variable s, to be used in SymPy computation
+        #lambda_bar = self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s))) #transformed Lame lambda
+        #mu_bar = (self.t_relax * s /(1 + self.t_relax * s))*self.shearmod #transformed Lame mu (shear mod)
         
+        #self.lambda_bar = lambda_bar
+        #self.mu_bar = mu_bar
         
+        #youngmod_bar = 2*mu_bar + (mu_bar*lambda_bar / (mu_bar + lambda_bar))
+        #poisson_bar = lambda_bar / (2*(mu_bar + lambda_bar))
+        
+        #bending_mod_bar = youngmod_bar * self.thickness**3 / (12*(1-poisson_bar**2))
+        
+        ## bending_mod_bar explicit with respect to Laplace s behaves better in inverse_laplace_transform
+        bending_mod_bar = (2*(self.t_relax * s /(1 + self.t_relax * s))*self.shearmod) + ((self.t_relax * s /(1 + self.t_relax * s))*self.shearmod)*(self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))) / ((self.t_relax * s /(1 + self.t_relax * s))*self.shearmod) + (self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))) * self.thickness**3 / (12*(1-((self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))) / (2*((self.t_relax * s /(1 + self.t_relax * s))*self.shearmod) + (self.lame_lambda + (2*self.shearmod / (3*(1 + self.t_relax * s)))))))**2)
+        
+        symbolic_ve_D = inverse_laplace_transform(bending_mod_bar/s, s, t) #construct viscoelastic D(t) through SymPy inverse Laplace transform
+        
+        return symbolic_ve_D.subs(t, t0) #evaluate D(t) at point t0 as expected
+    
+    def viscoelastic_deformation(self, x, t0, loading=None):
+        if loading is None:
+            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+        
+        ve_disp = (-1*loading/(24*self.viscoelastic_bendingmod(t0))) * (x**4 - 2* self.radius**2 * x**2 + self.radius**4) #by Laplace transform correspondence with elastic
+        
+        return ve_disp
+    
+    def viscoelastic_profile(self, x, t0):
+        return self.initial_surface + self.viscoelastic_deformation(x, t0)
+
     
 initial_surf = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
 ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius = 0.5*transect_length)
@@ -170,13 +213,14 @@ ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius
 x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints)
 stress_array = [ESkafta.elastic_stress(x) for x in x_cylcoords]
 elas_profile_array = [ESkafta.elastic_profile(x) for x in x_cylcoords]
-
+ve_profile_series = [[ESkafta.viscoelastic_profile(x, t) for x in x_cylcoords] for t in (10,)]
 
 ## Make figure
 plt.figure()
 plt.plot(xaxis, sevals_2012, color='k', ls='-.', label='15 Oct 2012')
 plt.plot(xaxis, sevals_2015, color='k', ls='-', label='10 Oct 2015')
 plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+plt.plot(xaxis, ve_profile_series[0][:], color='b', label='Viscoelastic, t=10 s')
 plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
 plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
 plt.legend(loc='lower right')
