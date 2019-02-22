@@ -144,7 +144,7 @@ class Cauldron(Ice):
         self.initial_surface = initial_surface
         self.bending_mod = self.youngmod * self.thickness **3 / (12*(1-self.poisson_nu**2))
     
-    def elastic_deformation(self, x, loading=None):
+    def elastic_beam_deform(self, x, loading=None):
         """Calculate displacement due to elastic deformation of an ice beam.  Returns deformation as a function of x, with x=0 at center of cauldron.
         Args:
             
@@ -156,11 +156,11 @@ class Cauldron(Ice):
         
         return disp
     
-    def elastic_profile(self, x):
-        return self.initial_surface + self.elastic_deformation(x)
+    def elastic_beam_profile(self, x):
+        return self.initial_surface + self.elastic_beam_deform(x)
     
     def LL_radial_deform(self, r, loading=None):
-        """Radially symmetric deformation according to solution presented in Landau & Lifshitz"""
+        """Radially symmetric deformation according to solution presented in Landau & Lifshitz for circular plate"""
     
         if loading is None:
             loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
@@ -220,10 +220,15 @@ class Cauldron(Ice):
     
     
     def viscoelastic_deformation(self, x, t0, loading=None):
+        """Collapse of a viscoelastic, radially symmetric plate solved by correspondence with elastic case."""
         if loading is None:
             loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+        if self.symbolic_ve_D is None:
+            self.set_viscoelastic_bendingmod()
         
-        ve_disp = (-1*loading/(24*self.viscoelastic_bendingmod(t0))) * (x**4 - 2* self.radius**2 * x**2 + self.radius**4) #by Laplace transform correspondence with elastic
+        ve_disp = (-1*loading/(64*self.symbolic_ve_D(t0))) * (self.radius**2 - x**2)**2 #by Laplace transform correspondence with LL_radial_deform
+        
+        #ve_disp = (-1*loading/(24*self.symbolic_ve_D(t0))) * (x**4 - 2* self.radius**2 * x**2 + self.radius**4)
         
         return ve_disp
     
@@ -233,23 +238,26 @@ class Cauldron(Ice):
     
 initial_surf = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
 ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius = 0.5*transect_length)
+ESkafta.set_viscoelastic_bendingmod()
 
 x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints)
 stress_array = [ESkafta.elastic_stress(x) for x in x_cylcoords]
-elas_profile_array = [ESkafta.elastic_profile(x) for x in x_cylcoords]
+elas_profile_array = [ESkafta.elastic_beam_profile(x) for x in x_cylcoords]
 LL_profile_array = [ESkafta.LL_profile(x) for x in x_cylcoords]
-ve_profile_series = [[ESkafta.viscoelastic_profile(x, 0) for x in x_cylcoords]]
+times = np.arange(0, 20000, step=5000)
+ve_profile_series = [[ESkafta.viscoelastic_profile(x, t0) for x in x_cylcoords] for t0 in times]
 
 ## Make figure
 plt.figure()
-plt.plot(xaxis, sevals_2012, color='k', ls='-.', label='15 Oct 2012')
-plt.plot(xaxis, sevals_2015, color='k', ls='-', label='10 Oct 2015')
-plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
-plt.plot(xaxis, LL_profile_array, color='b', label='Radially symm. plate')
-#plt.plot(xaxis, ve_profile_series[0][:], color='b', label='Viscoelastic, t=10 s')
+plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
+plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
+#plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+plt.plot(xaxis, LL_profile_array, color='b', label='Elastic plate')
+for i,ti in enumerate(times):
+    plt.plot(xaxis, ve_profile_series[i][:], ls='--', label='Viscoelastic, t={} s'.format(ti))
 plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
 plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
-plt.legend(loc='lower right')
+plt.legend(loc='lower left')
 plt.axes().set_aspect(5)
 plt.axes().set_xlim(0, transect_length)
 #plt.axes().set_yticks([1550, 1600, 1650, 1700])
@@ -258,6 +266,6 @@ plt.axes().tick_params(which='both', labelsize=14)
 plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
 plt.axes().set_xlabel('Along-transect distance [km]', fontsize=16)
 plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
-plt.title('Eastern Skafta cauldron transect: observed vs. ideal elastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
+plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
 plt.show()
 #plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
