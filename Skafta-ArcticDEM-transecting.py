@@ -157,21 +157,40 @@ class Cauldron(Ice):
     
     def elastic_profile(self, x):
         return self.initial_surface + self.elastic_deformation(x)
+    
+    def LL_radial_deform(self, r, loading=None):
+        """Radially symmetric deformation according to solution presented in Landau & Lifshitz"""
+    
+        if loading is None:
+            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+            
+        LL_beta = 3 * self.rho_ice * self.g *(1-self.poisson_nu**2) / (16 * self.thickness**2 * self.youngmod)
         
-    def elastic_stress(self, x_eval, dx = 0.5, z=None):
+        LL_disp = LL_beta * (self.radius**2 - r**2)**2
+        
+        return LL_disp
+        
+    def LL_profile(self, r):
+        return self.initial_surface - self.LL_radial_deform(r)
+        
+    def elastic_stress(self, x_eval, dx = 0.5, z=None, config='radial_plate'):
         """Calculate stress in an elastically deformed ice beam.  Returns stress as a function of x
         Default args: 
             dx = 0.5 m, step size for finite difference approx to derivative
+            z = thickness/2, distance above neutral surface to calculate stress
+            config: 'beam' or 'radial_plate' (radially symmetric plate)
         """
         if z is None:
             z = 0.5 * self.thickness ##make the default location location of stress calculation the ice surface, i.e. half the ice thickness above the neutral surface
-        
-        disp_func = lambda x: self.elastic_deformation(x)
+        if config=='radial_plate':
+            disp_func = lambda x: self.LL_radial_deform(x)
+        if config=='beam':    
+            disp_func = lambda x: self.elastic_deformation(x)
+            
         elastic_strain = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=2)
         hookean_stress =  self.youngmod * elastic_strain
         
         return hookean_stress
-    
     
     def viscoelastic_bendingmod(self, t0):
         """Compute viscoelastic (time-dependent) bending modulus by taking inverse Laplace transform of laplace_transformed_D.
@@ -213,6 +232,7 @@ ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius
 x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints)
 stress_array = [ESkafta.elastic_stress(x) for x in x_cylcoords]
 elas_profile_array = [ESkafta.elastic_profile(x) for x in x_cylcoords]
+LL_profile_array = [ESkafta.LL_profile(x) for x in x_cylcoords]
 ve_profile_series = [[ESkafta.viscoelastic_profile(x, t) for x in x_cylcoords] for t in (10,)]
 
 ## Make figure
@@ -220,7 +240,8 @@ plt.figure()
 plt.plot(xaxis, sevals_2012, color='k', ls='-.', label='15 Oct 2012')
 plt.plot(xaxis, sevals_2015, color='k', ls='-', label='10 Oct 2015')
 plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
-plt.plot(xaxis, ve_profile_series[0][:], color='b', label='Viscoelastic, t=10 s')
+plt.plot(xaxis, LL_profile_array, color='b', label='Radially symm. plate')
+#plt.plot(xaxis, ve_profile_series[0][:], color='b', label='Viscoelastic, t=10 s')
 plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
 plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
 plt.legend(loc='lower right')
