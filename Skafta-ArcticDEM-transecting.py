@@ -14,6 +14,8 @@ from sympy.abc import s, t
 #import shapefile
 #import datetime
 import matplotlib.pyplot as plt
+from matplotlib import cm
+from matplotlib.patches import Rectangle
 import math
 #from matplotlib.colors import LogNorm
 #from matplotlib import cm
@@ -97,7 +99,7 @@ def haversine(coord1, coord2):
     
     return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-transect_length = haversine(endpoints[0], endpoints[1])
+transect_length = haversine(endpoints[0][::-1], endpoints[1][::-1])
 xaxis = np.linspace(0, transect_length, num=npoints)
 
 
@@ -107,7 +109,7 @@ class Ice(object):
     Default values:
         g = 9.8 m/s^2, accel due to gravity
         rho_ice = 920.0 kg m^-3, density of glacier ice
-        youngmod = 9E9 Pa, Young's modulus of ice (many estimates, see e.g. 9E9 in Reeh 2003)
+        youngmod = 3E9 Pa, Young's modulus of ice (many estimates, see e.g. 9E9 in Reeh 2003)
         poisson_nu = 0.5, Poisson's ratio for viscoelastic ice
         dyn_viscos = 1E14 Pa s, dynamic viscosity of glacier ice
         #shearmod = 3.46E9 Pa, shear modulus of glacier ice (currently set in terms of Young's modulus, Poisson's ratio)
@@ -115,7 +117,7 @@ class Ice(object):
     Other attributes:
         t_relax: Maxwell relaxation timescale 
     """
-    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 9E9, poisson_nu = 0.3, dyn_viscos = 1E14):
+    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 1E9, poisson_nu = 0.3, dyn_viscos = 8E13):
         self.g = g
         self.rho_ice = rho_ice
         self.youngmod = youngmod
@@ -167,15 +169,15 @@ class Cauldron(Ice):
             
         LL_beta = 3 * loading *(1-self.poisson_nu**2) / (16 * self.thickness**3 * self.youngmod)
         
-        LL_disp = LL_beta * (self.radius**2 - r**2)**2
+        LL_disp = (-1*LL_beta) * (self.radius**2 - r**2)**2
         
         return LL_disp
         
     def LL_profile(self, r):
-        return self.initial_surface - self.LL_radial_deform(r)
+        return self.initial_surface + self.LL_radial_deform(r)
         
     def elastic_stress(self, x_eval, dx = 0.5, z=None, config='radial_plate'):
-        """Calculate stress in an elastically deformed ice beam.  Returns stress as a function of x
+        """Calculate stress in an elastically deformed ice beam.  Returns stress at point x_eval
         Default args: 
             dx = 0.5 m, step size for finite difference approx to derivative
             z = thickness/2, distance above neutral surface to calculate stress
@@ -183,15 +185,19 @@ class Cauldron(Ice):
         """
         if z is None:
             z = 0.5 * self.thickness ##make the default location location of stress calculation the ice surface, i.e. half the ice thickness above the neutral surface
+        
+        if config=='beam':    
+            disp_func = lambda x: self.elastic_beam_deform(x)    
+            elastic_strain = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=2)
+            hookean_stress =  self.youngmod * elastic_strain
+            return hookean_stress
+        
         if config=='radial_plate':
             disp_func = lambda x: self.LL_radial_deform(x)
-        if config=='beam':    
-            disp_func = lambda x: self.elastic_deformation(x)
-            
-        elastic_strain = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=2)
-        hookean_stress =  self.youngmod * elastic_strain
-        
-        return hookean_stress
+            strain_rr = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=2)
+            strain_thth = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=1) / self.radius
+            kl_stress_rr = (self.youngmod/(1-self.poisson_nu**2)) * (strain_rr + self.poisson_nu * strain_thth) #Kirchhoff-Love stress for circular plate
+            return kl_stress_rr
     
     def set_viscoelastic_bendingmod(self):
         """Construct time-dependent function viscoelastic (time-dependent) bending modulus by taking inverse Laplace transform of laplace_transformed_D.
@@ -234,7 +240,22 @@ class Cauldron(Ice):
     
     def viscoelastic_profile(self, x, t0):
         return self.initial_surface + self.viscoelastic_deformation(x, t0)
-
+    
+    def viscoelastic_stress(self, x, t0, loading=None, z=None, config='radial_plate'):
+        """Stress in a viscoelastic, radially symmetric plate by correspondence with Kirchhoff-Love elastic case"""
+        if loading is None:
+            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+        if z is None:
+            z = 0.5 * self.thickness ##make the default location location of stress calculation the ice surface, i.e. half the ice thickness above the neutral surface
+        if self.symbolic_ve_D is None:
+            self.set_viscoelastic_bendingmod()
+        
+        ve_strain_rr = (loading*z/(16*self.symbolic_ve_D(t0))) * (self.radius**2 - 3*x**2)
+        ve_strain_thth = (loading*z/(16*self.symbolic_ve_D(t0))) * (self.radius**2 - x**2)
+        
+        ve_stress_rr = (self.youngmod / (1 - self.poisson_nu**2)) *(ve_strain_rr + self.poisson_nu * ve_strain_thth)
+        
+        return ve_stress_rr
     
 initial_surf = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
 ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius = 0.5*transect_length)
@@ -244,17 +265,35 @@ x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints
 stress_array = [ESkafta.elastic_stress(x) for x in x_cylcoords]
 elas_profile_array = [ESkafta.elastic_beam_profile(x) for x in x_cylcoords]
 LL_profile_array = [ESkafta.LL_profile(x) for x in x_cylcoords]
-times = np.arange(0, 20000, step=5000)
+nseconds = 5*24*60*60 #number of seconds in the roughly 5-day collapse period
+times = np.arange(0, nseconds, step=20000)
 ve_profile_series = [[ESkafta.viscoelastic_profile(x, t0) for x in x_cylcoords] for t0 in times]
 
+elas_beam_stress = [ESkafta.elastic_stress(x, config='beam') for x in x_cylcoords]
+elas_plate_stress = [ESkafta.elastic_stress(x, config='radial_plate') for x in x_cylcoords]
+ve_plate_stress_min = [ESkafta.viscoelastic_stress(x, times[0]) for x in x_cylcoords]
+ve_plate_stress_max = [ESkafta.viscoelastic_stress(x, times[4]) for x in x_cylcoords]
+ve_bendingmod_series = [ESkafta.symbolic_ve_D(t0) for t0 in times]
+
+crevassed_limits = (2433, 2607) #selected by inspection with ginput
+w = []
+for x in xaxis:
+    if x>2433 and x<2607:
+        w.append(1)
+    else:
+        w.append(0)
+        
 ## Make figure
-plt.figure()
+
+cmap = cm.get_cmap('winter_r')
+#colors = cmap([0.1, 0.2, 0.3, 0.5, 0.7, 0.9])
+colors = cmap(np.linspace(0.1, 0.9, num=len(times)+1))
+
+plt.figure('Elastic only')
 plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
 plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
-#plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
-plt.plot(xaxis, LL_profile_array, color='b', label='Elastic plate')
-for i,ti in enumerate(times):
-    plt.plot(xaxis, ve_profile_series[i][:], ls='--', label='Viscoelastic, t={} s'.format(ti))
+plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+plt.plot(xaxis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
 plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
 plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
 plt.legend(loc='lower left')
@@ -263,9 +302,59 @@ plt.axes().set_xlim(0, transect_length)
 #plt.axes().set_yticks([1550, 1600, 1650, 1700])
 #plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
 plt.axes().tick_params(which='both', labelsize=14)
-plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
-plt.axes().set_xlabel('Along-transect distance [km]', fontsize=16)
+#plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
 plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
 plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
 plt.show()
 #plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
+
+plt.figure('Viscoelastic progression')
+plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
+plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
+#plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+plt.plot(xaxis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
+for i,ti in enumerate(times[::10]):
+    plt.plot(xaxis, ve_profile_series[i][:], ls='--', color=colors[i+1], lw=2, label='Viscoelastic, t={} s'.format(ti))
+plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+plt.legend(loc='lower left')
+plt.axes().set_aspect(5)
+plt.axes().set_xlim(0, transect_length)
+#plt.axes().set_yticks([1550, 1600, 1650, 1700])
+#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+plt.axes().tick_params(which='both', labelsize=14)
+#plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
+plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
+plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
+plt.show()
+
+plt.figure('Elastic stress')
+plt.plot(xaxis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
+plt.plot(xaxis, np.zeros(len(xaxis)), color='b', ls=':')
+#plt.plot(xaxis, 1E-6*np.array(elas_beam_stress), color='k', ls='-.', label='Elastic beam')
+plt.fill_between(xaxis, 1E-6*np.array(elas_plate_stress), plt.axes().get_ylim()[0], where=w, color='r', alpha=0.5)
+#plt.axes().add_patch(Rectangle((2433.5,plt.axes().get_ylim()[0]), 2607-2433.5, plt.axes().get_ylim()[1]-plt.axes().get_ylim()[0], facecolor='r', alpha=0.5))
+plt.legend(loc='upper right')
+plt.axes().tick_params(which='both', labelsize=14)
+plt.axes().set_xlim(0, transect_length)
+plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
+plt.axes().set_ylabel('Elastic stress [MPa]', fontsize=16)
+plt.title('Elastic stress at cauldron surface', fontsize=18)
+plt.show()
+
+plt.figure('Stress comparison')
+plt.plot(xaxis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
+plt.plot(xaxis, 1E-6*np.array(ve_plate_stress_min), color='k', ls='-.', lw=2, label='Viscoelastic plate')
+plt.plot(xaxis, np.zeros(len(xaxis)), color='b', ls=':')
+#plt.plot(xaxis, 1E-6*np.array(elas_beam_stress), color='k', ls='-.', label='Elastic beam')
+plt.fill_between(xaxis, 1E-6*np.array(elas_plate_stress), plt.axes().get_ylim()[0], where=w, color='r', alpha=0.5)
+#plt.axes().add_patch(Rectangle((2433.5,plt.axes().get_ylim()[0]), 2607-2433.5, plt.axes().get_ylim()[1]-plt.axes().get_ylim()[0], facecolor='r', alpha=0.5))
+plt.legend(loc='upper right')
+plt.axes().tick_params(which='both', labelsize=14)
+plt.axes().set_xlim(0, transect_length)
+plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
+plt.axes().set_ylabel('Elastic stress [MPa]', fontsize=16)
+plt.title('Stress at cauldron surface', fontsize=18)
+plt.show()
