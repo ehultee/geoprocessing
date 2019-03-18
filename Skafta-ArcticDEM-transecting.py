@@ -134,11 +134,11 @@ class Cauldron(Ice):
         name: A string with what we call this cauldron for modelling/analysis
         thickness: ice thickness of collapsing portion in m.  Default 300 m (for Skafta)
         radius: radius of cauldron in m.  Default 1500 m (for Skafta) but should be set by observations for best match
-        initial_surface: the mean initial surface elevation from which displacement should be calculated.  Default 1000m
+        initial_surface: a function of radial coordinate (r=0 at center of cauldron) describing pre-collapse surface elevation
         bending_mod: (elastic) bending modulus in Pa m^3.  Calculated from other inputs.
     Inherits material properties from class Ice.
     """
-    def __init__(self, name='Cauldron', thickness=300, radius=1500, initial_surface=1000):
+    def __init__(self, name='Cauldron', thickness=300, radius=1500, initial_surface=lambda x: 1000):
         Ice.__init__(self) #inherit quantities from Ice
         self.name = name
         self.thickness = thickness
@@ -159,7 +159,7 @@ class Cauldron(Ice):
         return disp
     
     def elastic_beam_profile(self, x):
-        return self.initial_surface + self.elastic_beam_deform(x)
+        return self.initial_surface(x) + self.elastic_beam_deform(x)
     
     def LL_radial_deform(self, r, loading=None):
         """Radially symmetric deformation according to solution presented in Landau & Lifshitz for circular plate"""
@@ -174,7 +174,7 @@ class Cauldron(Ice):
         return LL_disp
         
     def LL_profile(self, r):
-        return self.initial_surface + self.LL_radial_deform(r)
+        return self.initial_surface(r) + self.LL_radial_deform(r)
         
     def elastic_stress(self, x_eval, dx = 0.5, z=None, config='radial_plate'):
         """Calculate stress in an elastically deformed ice beam.  Returns stress at point x_eval
@@ -257,7 +257,7 @@ class Cauldron(Ice):
         
         return ve_stress_rr
     
-initial_surf = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
+initial_surf = lambda x: np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
 ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius = 0.5*transect_length)
 ESkafta.set_viscoelastic_bendingmod()
 
