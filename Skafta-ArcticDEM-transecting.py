@@ -117,7 +117,7 @@ class Ice(object):
     Other attributes:
         t_relax: Maxwell relaxation timescale 
     """
-    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 1E9, poisson_nu = 0.3, dyn_viscos = 8E13):
+    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 1E9, poisson_nu = 0.3, dyn_viscos = 1.5E13):
         self.g = g
         self.rho_ice = rho_ice
         self.youngmod = youngmod
@@ -239,7 +239,7 @@ class Cauldron(Ice):
         return ve_disp
     
     def viscoelastic_profile(self, x, t0):
-        return self.initial_surface + self.viscoelastic_deformation(x, t0)
+        return self.initial_surface(x) + self.viscoelastic_deformation(x, t0)
     
     def viscoelastic_stress(self, x, t0, loading=None, z=None, config='radial_plate'):
         """Stress in a viscoelastic, radially symmetric plate by correspondence with Kirchhoff-Love elastic case"""
@@ -257,11 +257,12 @@ class Cauldron(Ice):
         
         return ve_stress_rr
     
-initial_surf = lambda x: np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
+x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints)
+initial_surf_val = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
+initial_surf = interpolate.interp1d(x_cylcoords, sevals_2012, kind='quadratic') #will have matching length as long as num=npoints in x_cylcoords above
 ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius = 0.5*transect_length)
 ESkafta.set_viscoelastic_bendingmod()
 
-x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints)
 stress_array = [ESkafta.elastic_stress(x) for x in x_cylcoords]
 elas_profile_array = [ESkafta.elastic_beam_profile(x) for x in x_cylcoords]
 LL_profile_array = [ESkafta.LL_profile(x) for x in x_cylcoords]
@@ -289,25 +290,25 @@ cmap = cm.get_cmap('winter_r')
 #colors = cmap([0.1, 0.2, 0.3, 0.5, 0.7, 0.9])
 colors = cmap(np.linspace(0.1, 0.9, num=len(times)+1))
 
-plt.figure('Elastic only')
-plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
-plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
-plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
-plt.plot(xaxis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
-plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
-plt.legend(loc='lower left')
-plt.axes().set_aspect(5)
-plt.axes().set_xlim(0, transect_length)
-#plt.axes().set_yticks([1550, 1600, 1650, 1700])
-#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
-plt.axes().tick_params(which='both', labelsize=14)
-#plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
-plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
-plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
-plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
-plt.show()
-#plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
+#plt.figure('Elastic only')
+#plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
+#plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
+#plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+#plt.plot(xaxis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
+#plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+#plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+#plt.legend(loc='lower left')
+#plt.axes().set_aspect(5)
+#plt.axes().set_xlim(0, transect_length)
+##plt.axes().set_yticks([1550, 1600, 1650, 1700])
+##plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+#plt.axes().tick_params(which='both', labelsize=14)
+##plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+#plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
+#plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
+#plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
+#plt.show()
+##plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
 
 plt.figure('Viscoelastic progression')
 plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
@@ -327,8 +328,9 @@ plt.axes().tick_params(which='both', labelsize=14)
 #plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
 plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
 plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
-plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
+plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}, eta={:.1E}'.format(ESkafta.youngmod, ESkafta.dyn_viscos), fontsize=18)
 plt.show()
+#plt.savefig('Desktop/Skafta-viscoelastic-progression-{}.png'.format(datetime.date.today()), transparent=True)
 
 plt.figure('Elastic stress')
 plt.plot(xaxis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
@@ -346,7 +348,7 @@ plt.show()
 
 plt.figure('Stress comparison')
 plt.plot(xaxis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
-plt.plot(xaxis, 1E-6*np.array(ve_plate_stress_min), color='k', ls='-.', lw=2, label='Viscoelastic plate')
+plt.plot(xaxis, 1E-6*np.array(ve_plate_stress_max), color='k', ls='-.', lw=2, label='Viscoelastic plate, t={}'.format(max(times)))
 plt.plot(xaxis, np.zeros(len(xaxis)), color='b', ls=':')
 #plt.plot(xaxis, 1E-6*np.array(elas_beam_stress), color='k', ls='-.', label='Elastic beam')
 plt.fill_between(xaxis, 1E-6*np.array(elas_plate_stress), plt.axes().get_ylim()[0], where=w, color='r', alpha=0.5)
