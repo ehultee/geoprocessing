@@ -5,6 +5,8 @@ import numpy as np
 import scipy.misc as scp
 from scipy import interpolate
 from scipy.ndimage import gaussian_filter
+from scipy.signal import savgol_filter
+import mpl_toolkits.basemap.pyproj as pyproj
 from osgeo import gdal
 from netCDF4 import Dataset
 from sympy.integrals.transforms import inverse_laplace_transform
@@ -84,7 +86,8 @@ SE_2012 = np.ma.masked_where(se_2012==0, se_2012)
 lon_2015, lat_2015, se_2015 = read_ArcticDEM_nc(nc_20151010_path)
 SE_2015 = np.ma.masked_where(se_2015==0, se_2015)
 
-## Plot cauldron surface elevation for inital selection of peripheral points
+
+# Plot cauldron surface elevation for inital selection of peripheral points
 plt.figure()
 plt.contourf(lon_2015, lat_2015, SE_2015, 100)
 plt.show()
@@ -94,7 +97,7 @@ sefunc_2012 = interpolate.interp2d(lon_2012, lat_2012, SE_2012)
 sefunc_2015 = interpolate.interp2d(lon_2015, lat_2015, SE_2015)
 
 ## Finding center and sampling radii
-cauldron_periphery = MultiPoint([(-17.543361216627368, 64.495296898783465),
+cauldron_periphery = np.asarray([(-17.543361216627368, 64.495296898783465),
  (-17.54553805337574, 64.492481870049829),
  (-17.54600451839325, 64.490211685587212),
  (-17.545849030054079, 64.487305849475078),
@@ -128,14 +131,38 @@ cauldron_periphery = MultiPoint([(-17.543361216627368, 64.495296898783465),
  (-17.526568475997049, 64.50029130460122),
  (-17.53076666115463, 64.499564845573175),
  (-17.535586799668888, 64.498293542274112),
- (-17.538541078113109, 64.497294661110573)]
-) #coordinates of points around cauldron, selected with ginput
-cauldron_center = cauldron_periphery.centroid #finding coordinates of cauldron center
-npoints = 100
-res = npoints/4 #choose resolution for Shapely buffer based on how many sample points we want
-#cauldron_radius = np.mean([haversine(np.asarray(cauldron_center)[::-1], np.asarray(p)[::-1]) for p in cauldron_periphery])
-cauldron_radius = np.mean([cauldron_center.distance(p) for p in cauldron_periphery])
-peripheral_pts = cauldron_center.buffer(distance = cauldron_radius, resolution=res) #set of points at distance R from the centroid
+ (-17.538541078113109, 64.497294661110573)]) #latlon coordinates of points around cauldron, selected with ginput
+
+print 'Transforming coordinates of cauldron periphery'
+wgs84 = pyproj.Proj("+init=EPSG:4326") # LatLon with WGS84 datum used by ArcticDEM 
+hjorsey = pyproj.Proj("+init=EPSG:3056") # UTM zone 28N for Iceland, so that coords will be in km northing/easting
+xt, yt = pyproj.transform(wgs84, hjorsey, cauldron_periphery[:,0], cauldron_periphery[:,1])
+cauldron_periph_utm = np.asarray([(xt[i], yt[i]) for i in range(len(xt))])
+transformed_mp = MultiPoint(cauldron_periph_utm)
+cauldron_center = transformed_mp.centroid #finding UTM coordinates of cauldron center
+nradii = 10
+res = int(np.floor(nradii/4)) #choose resolution for Shapely buffer based on how many sample points we want
+cauldron_radius = np.mean([cauldron_center.distance(p) for p in transformed_mp])
+radial_buffer = cauldron_center.buffer(distance = cauldron_radius, resolution=res) #set of points at distance R from the centroid
+radial_pts = np.asarray(list(radial_buffer.exterior.coords))
+rpx, rpy = pyproj.transform(hjorsey, wgs84, radial_pts[:,0], radial_pts[:,1])
+radial_pts_latlon = np.asarray([(rpx[i], rpy[i]) for i in range(len(rpx))])
+center_latlon = pyproj.transform(hjorsey, wgs84, list(cauldron_center.coords)[0][0], list(cauldron_center.coords)[0][1])
+
+### check UTM selection of pts
+#plt.figure()
+#plt.scatter(radial_pts[:,0], radial_pts[:,1])
+#for i in range(len(radial_pts)):
+#    plt.axes().annotate(i, radial_pts[i])
+#plt.axes().set_aspect(1)
+#plt.show()
+#
+## check latlon pts over ArcticDEM
+plt.figure('Skafta region and selected radial points')
+plt.contourf(lon_2015, lat_2015, SE_2015, 100)
+plt.scatter(radial_pts_latlon[:,0], radial_pts_latlon[:,1])
+plt.plot(center_latlon[0], center_latlon[1], marker='*')
+plt.show()
 
 #endpoints = [(-17.542113802658239, 64.488141277357315),
 # (-17.48586677277758, 64.486397775690023)] #coordinates at either side of the cauldron, selected by inspection with ginput.  
@@ -144,12 +171,20 @@ peripheral_pts = cauldron_center.buffer(distance = cauldron_radius, resolution=r
 #sevals_2012 = np.asarray([sefunc_2012(lonvals[i], latvals[i]) for i in range(npoints)]).squeeze()
 #sevals_2015 = np.asarray([sefunc_2015(lonvals[i], latvals[i]) for i in range(npoints)]).squeeze()
 #
+## sample along radii
+nsamples = 500 #number of points to sample from interpolated ArcticDEM.  500 gives resolution ~2.5 m
+se_radii_2012 = {}
+se_radii_2015 = {}
+for j, radial_pt in enumerate(radial_pts_latlon):
+    lonvals = np.linspace(center_latlon[0], radial_pt[0], nsamples)
+    latvals = np.linspace(center_latlon[1], radial_pt[1], nsamples)
+    se_radii_2012[j] = np.asarray([sefunc_2012(lonvals[i], latvals[i]) for i in range(nsamples)]).squeeze()
+    se_radii_2015[j] = np.asarray([sefunc_2015(lonvals[i], latvals[i]) for i in range(nsamples)]).squeeze()
 
-#
-#transect_length = haversine(endpoints[0][::-1], endpoints[1][::-1])
-#xaxis = np.linspace(0, transect_length, num=npoints)
-#
-#
+radial_length = haversine(radial_pts_latlon[0][::-1], center_latlon[::-1])
+xaxis = np.linspace(0, radial_length, num=nsamples)
+
+
 ### Set up analytical profile
 #class Ice(object):
 #    """Holds constants passed to Cauldron, set to default values but adjustable.
@@ -297,12 +332,31 @@ peripheral_pts = cauldron_center.buffer(distance = cauldron_radius, resolution=r
 #ve_profile_series = [[ESkafta.viscoelastic_profile(x, t0) for x in x_cylcoords] for t0 in times]
 #
 #
-### Make figure
-#
-#cmap = cm.get_cmap('winter_r')
-##colors = cmap([0.1, 0.2, 0.3, 0.5, 0.7, 0.9])
-#colors = cmap(np.linspace(0.1, 0.9, num=len(times)+1))
-#
+## Make figures
+
+cmap = cm.get_cmap('winter_r')
+#colors = cmap([0.1, 0.2, 0.3, 0.5, 0.7, 0.9])
+colors = cmap(np.linspace(0.1, 0.9, num=len(times)+1))
+
+plt.figure('Radial profiles')
+for j in se_radii_2012.keys():
+    plt.plot(xaxis, se_radii_2012[j], ls='-.') #, label='15 Oct 2012'
+    plt.plot(xaxis, se_radii_2015[j], ls='-', label='{}, 2015'.format(j)) #, label='10 Oct 2015'
+#plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+#plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+plt.legend(loc='lower right')
+plt.axes().set_aspect(1)
+plt.axes().set_xlim(0, radial_length)
+plt.axes().set_ylim(1400, 1800)
+#plt.axes().set_yticks([1550, 1600, 1650, 1700])
+#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+plt.axes().tick_params(which='both', labelsize=14)
+#plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
+plt.title('Eastern Skafta cauldron radial samples', fontsize=18)
+plt.show()
+
 #plt.figure('Elastic only')
 #plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
 #plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
@@ -321,8 +375,8 @@ peripheral_pts = cauldron_center.buffer(distance = cauldron_radius, resolution=r
 #plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
 #plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
 #plt.show()
-##plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
-#
+#plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
+
 #plt.figure('Viscoelastic progression')
 #plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
 #plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
