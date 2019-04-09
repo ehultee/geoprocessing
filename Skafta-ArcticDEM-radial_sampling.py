@@ -88,9 +88,9 @@ SE_2015 = np.ma.masked_where(se_2015==0, se_2015)
 
 
 # Plot cauldron surface elevation for inital selection of peripheral points
-plt.figure()
-plt.contourf(lon_2015, lat_2015, SE_2015, 100)
-plt.show()
+#plt.figure()
+#plt.contourf(lon_2015, lat_2015, SE_2015, 100)
+#plt.show()
 
 ### Interpolating surface elevation
 sefunc_2012 = interpolate.interp2d(lon_2012, lat_2012, SE_2012)
@@ -140,7 +140,7 @@ xt, yt = pyproj.transform(wgs84, hjorsey, cauldron_periphery[:,0], cauldron_peri
 cauldron_periph_utm = np.asarray([(xt[i], yt[i]) for i in range(len(xt))])
 transformed_mp = MultiPoint(cauldron_periph_utm)
 cauldron_center = transformed_mp.centroid #finding UTM coordinates of cauldron center
-nradii = 10
+nradii = 30
 res = int(np.floor(nradii/4)) #choose resolution for Shapely buffer based on how many sample points we want
 cauldron_radius = np.mean([cauldron_center.distance(p) for p in transformed_mp])
 radial_buffer = cauldron_center.buffer(distance = cauldron_radius, resolution=res) #set of points at distance R from the centroid
@@ -181,156 +181,196 @@ for j, radial_pt in enumerate(radial_pts_latlon):
     se_radii_2012[j] = np.asarray([sefunc_2012(lonvals[i], latvals[i]) for i in range(nsamples)]).squeeze()
     se_radii_2015[j] = np.asarray([sefunc_2015(lonvals[i], latvals[i]) for i in range(nsamples)]).squeeze()
 
+radial_curvature_2012 = {}
+radial_curvature_2015 = {}
+for k in se_radii_2012.keys():
+    radial_curvature_2012[k] = savgol_filter(se_radii_2012[k], 11, 5, deriv=2)
+    radial_curvature_2015[k] = savgol_filter(se_radii_2015[k], 11, 5, deriv=2)
+
 radial_length = haversine(radial_pts_latlon[0][::-1], center_latlon[::-1])
-xaxis = np.linspace(0, radial_length, num=nsamples)
+radial_axis = np.linspace(0, radial_length, num=nsamples)
+
+crevasse_locations = []
+for k in radial_curvature_2015.keys():
+    curv_vals = radial_curvature_2015[k]
+    for i in range(len(curv_vals)):
+        if abs(curv_vals[i])>20:    
+            crevasse_locations.append(radial_axis[i])
 
 
-### Set up analytical profile
-#class Ice(object):
-#    """Holds constants passed to Cauldron, set to default values but adjustable.
-#    Default values:
-#        g = 9.8 m/s^2, accel due to gravity
-#        rho_ice = 920.0 kg m^-3, density of glacier ice
-#        youngmod = 9E9 Pa, Young's modulus of ice (many estimates, see e.g. 9E9 in Reeh 2003)
-#        poisson_nu = 0.5, Poisson's ratio for viscoelastic ice
-#        dyn_viscos = 1E14 Pa s, dynamic viscosity of glacier ice
-#        #shearmod = 3.46E9 Pa, shear modulus of glacier ice (currently set in terms of Young's modulus, Poisson's ratio)
-#        #lame_lambda = 5.19E9 Pa, first Lame parameter of glacier ice (currently set in terms of Young's modulus, Poisson's ratio)
-#    Other attributes:
-#        t_relax: Maxwell relaxation timescale 
-#    """
-#    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 9E9, poisson_nu = 0.3, dyn_viscos = 1E14):
-#        self.g = g
-#        self.rho_ice = rho_ice
-#        self.youngmod = youngmod
-#        self.poisson_nu = poisson_nu
-#        self.dyn_viscos = dyn_viscos
-#        self.shearmod = self.youngmod / (2*(1+self.poisson_nu))
-#        self.lame_lambda = (self.youngmod * self.poisson_nu)/((1+self.poisson_nu)*(1-2*self.poisson_nu))
-#        self.t_relax = dyn_viscos/self.shearmod
-#
-#        
-#class Cauldron(Ice):
-#    """Consistent simulation of elastic or viscoelastic cauldron collapse.
-#    Attributes:
-#        name: A string with what we call this cauldron for modelling/analysis
-#        thickness: ice thickness of collapsing portion in m.  Default 300 m (for Skafta)
-#        radius: radius of cauldron in m.  Default 1500 m (for Skafta) but should be set by observations for best match
-#        initial_surface: the mean initial surface elevation from which displacement should be calculated.  Default 1000m
-#        bending_mod: (elastic) bending modulus in Pa m^3.  Calculated from other inputs.
-#    Inherits material properties from class Ice.
-#    """
-#    def __init__(self, name='Cauldron', thickness=300, radius=1500, initial_surface=1000):
-#        Ice.__init__(self) #inherit quantities from Ice
-#        self.name = name
-#        self.thickness = thickness
-#        self.radius = radius
-#        self.initial_surface = initial_surface
-#        self.bending_mod = self.youngmod * self.thickness **3 / (12*(1-self.poisson_nu**2))
-#    
-#    def elastic_beam_deform(self, x, loading=None):
-#        """Calculate displacement due to elastic deformation of an ice beam.  Returns deformation as a function of x, with x=0 at center of cauldron.
-#        Args:
-#            
-#        """
-#        if loading is None:
-#            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
-#        
-#        disp = (-1*loading/(24*self.bending_mod)) * (x**4 - 2* self.radius**2 * x**2 + self.radius**4)
-#        
-#        return disp
-#    
-#    def elastic_beam_profile(self, x):
-#        return self.initial_surface + self.elastic_beam_deform(x)
-#    
-#    def LL_radial_deform(self, r, loading=None):
-#        """Radially symmetric deformation according to solution presented in Landau & Lifshitz for circular plate"""
-#    
-#        if loading is None:
-#            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
-#            
-#        LL_beta = 3 * loading *(1-self.poisson_nu**2) / (16 * self.thickness**3 * self.youngmod)
-#        
-#        LL_disp = LL_beta * (self.radius**2 - r**2)**2
-#        
-#        return LL_disp
-#        
-#    def LL_profile(self, r):
-#        return self.initial_surface - self.LL_radial_deform(r)
-#        
-#    def elastic_stress(self, x_eval, dx = 0.5, z=None, config='radial_plate'):
-#        """Calculate stress in an elastically deformed ice beam.  Returns stress as a function of x
-#        Default args: 
-#            dx = 0.5 m, step size for finite difference approx to derivative
-#            z = thickness/2, distance above neutral surface to calculate stress
-#            config: 'beam' or 'radial_plate' (radially symmetric plate)
-#        """
-#        if z is None:
-#            z = 0.5 * self.thickness ##make the default location location of stress calculation the ice surface, i.e. half the ice thickness above the neutral surface
-#        if config=='radial_plate':
-#            disp_func = lambda x: self.LL_radial_deform(x)
-#        if config=='beam':    
-#            disp_func = lambda x: self.elastic_deformation(x)
-#            
-#        elastic_strain = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=2)
-#        hookean_stress =  self.youngmod * elastic_strain
-#        
-#        return hookean_stress
-#    
-#    def set_viscoelastic_bendingmod(self):
-#        """Construct time-dependent function viscoelastic (time-dependent) bending modulus by taking inverse Laplace transform of laplace_transformed_D.
-#        t0: time at which to evaluate"""
-#        s = Symbol('s') #Laplace variable s, to be used in SymPy computation
-#        t = Symbol('t', positive=True)
-#        laml = Symbol('laml', positive=True) #stand-in symbol for lame_lambda
-#        m = Symbol('m', positive=True) #stand-in symbol for shearmod
-#        tr = Symbol('tr', positive=True) #stand-in symbol for t_relax
-#        h = Symbol('h', positive=True) #stand-in symbol for thickness
-#        
-#        lambda_bar = laml + (2*m / (3*(1 + tr * s))) #transformed Lame lambda
-#        mu_bar = (tr * s /(1 + tr * s))*m #transformed Lame mu (shear mod)
-#        
-#        #self.lambda_bar = lambda_bar
-#        #self.mu_bar = mu_bar
-#        
-#        youngmod_bar = 2*mu_bar + (mu_bar*lambda_bar / (mu_bar + lambda_bar))
-#        poisson_bar = lambda_bar / (2*(mu_bar + lambda_bar))
-#        
-#        bending_mod_bar = youngmod_bar * h**3 / (12*(1-poisson_bar**2))
-#                
-#        symbolic_ve_D = inverse_laplace_transform(bending_mod_bar/s, s, t) #construct viscoelastic D(t) through SymPy inverse Laplace transform
-#        self.symbolic_ve_D = lambda t0: symbolic_ve_D.subs(((laml, self.lame_lambda), (m, self.shearmod), (tr, self.t_relax), (h, self.thickness), (t, t0)))
-#        #return symbolic_ve_D.subs(((t, t0), (laml, self.lame_lambda), (m, self.shearmod), (tr, self.t_relax), (h, self.thickness))) #evaluate D(t) at point t0 as expected
-#    
-#    
-#    def viscoelastic_deformation(self, x, t0, loading=None):
-#        """Collapse of a viscoelastic, radially symmetric plate solved by correspondence with elastic case."""
-#        if loading is None:
-#            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
-#        if self.symbolic_ve_D is None:
-#            self.set_viscoelastic_bendingmod()
-#        
-#        ve_disp = (-1*loading/(64*self.symbolic_ve_D(t0))) * (self.radius**2 - x**2)**2 #by Laplace transform correspondence with LL_radial_deform
-#        
-#        #ve_disp = (-1*loading/(24*self.symbolic_ve_D(t0))) * (x**4 - 2* self.radius**2 * x**2 + self.radius**4)
-#        
-#        return ve_disp
-#    
-#    def viscoelastic_profile(self, x, t0):
-#        return self.initial_surface + self.viscoelastic_deformation(x, t0)
-#
-#    
-#initial_surf = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
-#ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius =cauldron_radius)
-#ESkafta.set_viscoelastic_bendingmod()
-#
+## Set up analytical profile
+class Ice(object):
+    """Holds constants passed to Cauldron, set to default values but adjustable.
+    Default values:
+        g = 9.8 m/s^2, accel due to gravity
+        rho_ice = 920.0 kg m^-3, density of glacier ice
+        youngmod = 3E9 Pa, Young's modulus of ice (many estimates, see e.g. 9E9 in Reeh 2003)
+        poisson_nu = 0.5, Poisson's ratio for viscoelastic ice
+        dyn_viscos = 1E14 Pa s, dynamic viscosity of glacier ice
+        #shearmod = 3.46E9 Pa, shear modulus of glacier ice (currently set in terms of Young's modulus, Poisson's ratio)
+        #lame_lambda = 5.19E9 Pa, first Lame parameter of glacier ice (currently set in terms of Young's modulus, Poisson's ratio)
+    Other attributes:
+        t_relax: Maxwell relaxation timescale 
+    """
+    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 1E9, poisson_nu = 0.3, dyn_viscos = 1.5E13):
+        self.g = g
+        self.rho_ice = rho_ice
+        self.youngmod = youngmod
+        self.poisson_nu = poisson_nu
+        self.dyn_viscos = dyn_viscos
+        self.shearmod = self.youngmod / (2*(1+self.poisson_nu))
+        self.lame_lambda = (self.youngmod * self.poisson_nu)/((1+self.poisson_nu)*(1-2*self.poisson_nu))
+        self.t_relax = dyn_viscos/self.shearmod
+
+        
+class Cauldron(Ice):
+    """Consistent simulation of elastic or viscoelastic cauldron collapse.
+    Attributes:
+        name: A string with what we call this cauldron for modelling/analysis
+        thickness: ice thickness of collapsing portion in m.  Default 300 m (for Skafta)
+        radius: radius of cauldron in m.  Default 1500 m (for Skafta) but should be set by observations for best match
+        initial_surface: a function of radial coordinate (r=0 at center of cauldron) describing pre-collapse surface elevation
+        bending_mod: (elastic) bending modulus in Pa m^3.  Calculated from other inputs.
+    Inherits material properties from class Ice.
+    """
+    def __init__(self, name='Cauldron', thickness=300, radius=1500, initial_surface=lambda x: 1000):
+        Ice.__init__(self) #inherit quantities from Ice
+        self.name = name
+        self.thickness = thickness
+        self.radius = radius
+        self.initial_surface = initial_surface
+        self.bending_mod = self.youngmod * self.thickness **3 / (12*(1-self.poisson_nu**2))
+    
+    def elastic_beam_deform(self, x, loading=None):
+        """Calculate displacement due to elastic deformation of an ice beam.  Returns deformation as a function of x, with x=0 at center of cauldron.
+        Args:
+            
+        """
+        if loading is None:
+            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+        
+        disp = (-1*loading/(24*self.bending_mod)) * (x**4 - 2* self.radius**2 * x**2 + self.radius**4)
+        
+        return disp
+    
+    def elastic_beam_profile(self, x):
+        return self.initial_surface(x) + self.elastic_beam_deform(x)
+    
+    def LL_radial_deform(self, r, loading=None):
+        """Radially symmetric deformation according to solution presented in Landau & Lifshitz for circular plate"""
+    
+        if loading is None:
+            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+            
+        LL_beta = 3 * loading *(1-self.poisson_nu**2) / (16 * self.thickness**3 * self.youngmod)
+        
+        LL_disp = (-1*LL_beta) * (self.radius**2 - r**2)**2
+        
+        return LL_disp
+        
+    def LL_profile(self, r):
+        return self.initial_surface(r) + self.LL_radial_deform(r)
+        
+    def elastic_stress(self, x_eval, dx = 0.5, z=None, config='radial_plate'):
+        """Calculate stress in an elastically deformed ice beam.  Returns stress at point x_eval
+        Default args: 
+            dx = 0.5 m, step size for finite difference approx to derivative
+            z = thickness/2, distance above neutral surface to calculate stress
+            config: 'beam' or 'radial_plate' (radially symmetric plate)
+        """
+        if z is None:
+            z = 0.5 * self.thickness ##make the default location location of stress calculation the ice surface, i.e. half the ice thickness above the neutral surface
+        
+        if config=='beam':    
+            disp_func = lambda x: self.elastic_beam_deform(x)    
+            elastic_strain = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=2)
+            hookean_stress =  self.youngmod * elastic_strain
+            return hookean_stress
+        
+        if config=='radial_plate':
+            disp_func = lambda x: self.LL_radial_deform(x)
+            strain_rr = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=2)
+            strain_thth = z * scp.derivative(disp_func, x0=x_eval, dx=dx, n=1) / self.radius
+            kl_stress_rr = (self.youngmod/(1-self.poisson_nu**2)) * (strain_rr + self.poisson_nu * strain_thth) #Kirchhoff-Love stress for circular plate
+            return kl_stress_rr
+    
+    def set_viscoelastic_bendingmod(self):
+        """Construct time-dependent function viscoelastic (time-dependent) bending modulus by taking inverse Laplace transform of laplace_transformed_D.
+        t0: time at which to evaluate"""
+        s = Symbol('s') #Laplace variable s, to be used in SymPy computation
+        t = Symbol('t', positive=True)
+        laml = Symbol('laml', positive=True) #stand-in symbol for lame_lambda
+        m = Symbol('m', positive=True) #stand-in symbol for shearmod
+        tr = Symbol('tr', positive=True) #stand-in symbol for t_relax
+        h = Symbol('h', positive=True) #stand-in symbol for thickness
+        
+        lambda_bar = laml + (2*m / (3*(1 + tr * s))) #transformed Lame lambda
+        mu_bar = (tr * s /(1 + tr * s))*m #transformed Lame mu (shear mod)
+        
+        #self.lambda_bar = lambda_bar
+        #self.mu_bar = mu_bar
+        
+        youngmod_bar = 2*mu_bar + (mu_bar*lambda_bar / (mu_bar + lambda_bar))
+        poisson_bar = lambda_bar / (2*(mu_bar + lambda_bar))
+        
+        bending_mod_bar = youngmod_bar * h**3 / (12*(1-poisson_bar**2))
+                
+        symbolic_ve_D = inverse_laplace_transform(bending_mod_bar/s, s, t) #construct viscoelastic D(t) through SymPy inverse Laplace transform
+        self.symbolic_ve_D = lambda t0: symbolic_ve_D.subs(((laml, self.lame_lambda), (m, self.shearmod), (tr, self.t_relax), (h, self.thickness), (t, t0)))
+        #return symbolic_ve_D.subs(((t, t0), (laml, self.lame_lambda), (m, self.shearmod), (tr, self.t_relax), (h, self.thickness))) #evaluate D(t) at point t0 as expected
+    
+    
+    def viscoelastic_deformation(self, x, t0, loading=None):
+        """Collapse of a viscoelastic, radially symmetric plate solved by correspondence with elastic case."""
+        if loading is None:
+            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+        if self.symbolic_ve_D is None:
+            self.set_viscoelastic_bendingmod()
+        
+        ve_disp = (-1*loading/(64*self.symbolic_ve_D(t0))) * (self.radius**2 - x**2)**2 #by Laplace transform correspondence with LL_radial_deform
+        
+        #ve_disp = (-1*loading/(24*self.symbolic_ve_D(t0))) * (x**4 - 2* self.radius**2 * x**2 + self.radius**4)
+        
+        return ve_disp
+    
+    def viscoelastic_profile(self, x, t0):
+        return self.initial_surface(x) + self.viscoelastic_deformation(x, t0)
+    
+    def viscoelastic_stress(self, x, t0, loading=None, z=None, config='radial_plate'):
+        """Stress in a viscoelastic, radially symmetric plate by correspondence with Kirchhoff-Love elastic case"""
+        if loading is None:
+            loading = self.rho_ice * self.g * self.thickness #basic uniform loading of unsupported ice
+        if z is None:
+            z = 0.5 * self.thickness ##make the default location location of stress calculation the ice surface, i.e. half the ice thickness above the neutral surface
+        if self.symbolic_ve_D is None:
+            self.set_viscoelastic_bendingmod()
+        
+        ve_strain_rr = (loading*z/(16*self.symbolic_ve_D(t0))) * (self.radius**2 - 3*x**2)
+        ve_strain_thth = (loading*z/(16*self.symbolic_ve_D(t0))) * (self.radius**2 - x**2)
+        
+        ve_stress_rr = (self.youngmod / (1 - self.poisson_nu**2)) *(ve_strain_rr + self.poisson_nu * ve_strain_thth)
+        
+        return ve_stress_rr
+    
 #x_cylcoords = np.linspace(-0.5*transect_length, 0.5*transect_length, num=npoints)
-#stress_array = [ESkafta.elastic_stress(x) for x in x_cylcoords]
-#elas_profile_array = [ESkafta.elastic_beam_profile(x) for x in x_cylcoords]
-#LL_profile_array = [ESkafta.LL_profile(x) for x in x_cylcoords]
-#times = np.arange(0, 20000, step=5000)
-#ve_profile_series = [[ESkafta.viscoelastic_profile(x, t0) for x in x_cylcoords] for t0 in times]
-#
+#initial_surf_val = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
+initial_surf = interpolate.interp1d(radial_axis, se_radii_2012[0], kind='quadratic') #will have matching length as long as num=npoints in x_cylcoords above
+ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = initial_surf, radius = radial_length)
+ESkafta.set_viscoelastic_bendingmod()
+
+stress_array = [ESkafta.elastic_stress(x) for x in radial_axis]
+elas_profile_array = [ESkafta.elastic_beam_profile(x) for x in radial_axis]
+LL_profile_array = [ESkafta.LL_profile(x) for x in radial_axis]
+nseconds = 5*24*60*60 #number of seconds in the roughly 5-day collapse period
+times = np.arange(0, nseconds, step=20000)
+ve_profile_series = [[ESkafta.viscoelastic_profile(x, t0) for x in radial_axis] for t0 in times]
+
+elas_beam_stress = [ESkafta.elastic_stress(x, config='beam') for x in radial_axis]
+elas_plate_stress = [ESkafta.elastic_stress(x, config='radial_plate') for x in radial_axis]
+ve_plate_stress_min = [ESkafta.viscoelastic_stress(x, times[0]) for x in radial_axis]
+ve_plate_stress_max = [ESkafta.viscoelastic_stress(x, times[4]) for x in radial_axis]
+ve_bendingmod_series = [ESkafta.symbolic_ve_D(t0) for t0 in times]
+
 #
 ## Make figures
 
@@ -340,10 +380,10 @@ colors = cmap(np.linspace(0.1, 0.9, num=len(times)+1))
 
 plt.figure('Radial profiles')
 for j in se_radii_2012.keys():
-    plt.plot(xaxis, se_radii_2012[j], ls='-.') #, label='15 Oct 2012'
-    plt.plot(xaxis, se_radii_2015[j], ls='-', label='{}, 2015'.format(j)) #, label='10 Oct 2015'
-#plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-#plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+    plt.plot(radial_axis, se_radii_2012[j], ls='-.') #, label='15 Oct 2012'
+    plt.plot(radial_axis, se_radii_2015[j], ls='-', label='{}, 2015'.format(j)) #, label='10 Oct 2015'
+#plt.fill_between(radial_axis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+#plt.fill_between(radial_axis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
 plt.legend(loc='lower right')
 plt.axes().set_aspect(1)
 plt.axes().set_xlim(0, radial_length)
@@ -357,13 +397,32 @@ plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
 plt.title('Eastern Skafta cauldron radial samples', fontsize=18)
 plt.show()
 
+plt.figure('Radial curvature')
+for j in radial_curvature_2015.keys():
+    #plt.plot(radial_axis, radial_curvature_2012[j], ls='-.') #, label='15 Oct 2012'
+    plt.plot(radial_axis, radial_curvature_2015[j], ls='-', label='Radial section {}'.format(j)) #, label='10 Oct 2015'
+for c in crevasse_locations:
+    plt.axvline(x=c, color='Gainsboro')
+plt.legend(loc='lower right')
+plt.axes().set_aspect(1)
+plt.axes().set_xlim(0, radial_length)
+#plt.axes().set_ylim(1400, 1800)
+#plt.axes().set_yticks([1550, 1600, 1650, 1700])
+#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+plt.axes().tick_params(which='both', labelsize=14)
+#plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+plt.axes().set_ylabel('Surface curvature', fontsize=16)
+plt.title('Eastern Skafta cauldron radial curvature', fontsize=18)
+plt.show()
+
 #plt.figure('Elastic only')
-#plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
-#plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
-##plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
-#plt.plot(xaxis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
-#plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-#plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+#plt.plot(radial_axis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
+#plt.plot(radial_axis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
+##plt.plot(radial_axis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+#plt.plot(radial_axis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
+#plt.fill_between(radial_axis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+#plt.fill_between(radial_axis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
 #plt.legend(loc='lower left')
 #plt.axes().set_aspect(5)
 #plt.axes().set_xlim(0, transect_length)
@@ -377,24 +436,38 @@ plt.show()
 #plt.show()
 #plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
 
-#plt.figure('Viscoelastic progression')
-#plt.plot(xaxis, sevals_2012, color='k', ls='-.') #, label='15 Oct 2012'
-#plt.plot(xaxis, sevals_2015, color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
-##plt.plot(xaxis, elas_profile_array, color='r', ls=':', label='Elastic beam')
-#plt.plot(xaxis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
-#for i,ti in enumerate(times):
-#    plt.plot(xaxis, ve_profile_series[i][:], ls='--', color=colors[i+1], lw=2, label='Viscoelastic, t={} s'.format(ti))
-#plt.fill_between(xaxis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-#plt.fill_between(xaxis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
-#plt.legend(loc='lower left')
+plt.figure('Viscoelastic progression')
+plt.plot(radial_axis, se_radii_2012[0], color='k', ls='-.') #, label='15 Oct 2012'
+plt.plot(radial_axis, se_radii_2015[0], color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
+#plt.plot(radial_axis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+plt.plot(radial_axis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
+for i,ti in enumerate(times):
+    plt.plot(radial_axis, ve_profile_series[i][:], ls='--', color=colors[i+1], lw=2, label='Viscoelastic, t={} s'.format(ti))
+plt.fill_between(radial_axis, se_radii_2012[0], se_radii_2015[0], color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+plt.fill_between(radial_axis, se_radii_2015[0], (plt.axes().get_ylim()[0]), color='Azure')
+plt.legend(loc='lower left')
 #plt.axes().set_aspect(5)
-#plt.axes().set_xlim(0, transect_length)
-##plt.axes().set_yticks([1550, 1600, 1650, 1700])
-##plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
-#plt.axes().tick_params(which='both', labelsize=14)
+plt.axes().set_xlim(0, radial_length)
+#plt.axes().set_yticks([1550, 1600, 1650, 1700])
+#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+plt.axes().tick_params(which='both', labelsize=14)
 #plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
-#plt.axes().set_xlabel('Along-transect distance [km]', fontsize=16)
+#plt.axes().set_xlabel('Radial distance [km]', fontsize=16)
 #plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
-#plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
-#plt.show()
-#
+plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
+plt.show()
+
+
+plt.figure('Stress comparison')
+plt.plot(radial_axis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
+plt.plot(radial_axis, 1E-6*np.array(ve_plate_stress_max), color='k', ls='-.', lw=2, label='Viscoelastic plate, t={}'.format(max(times)))
+for c in crevasse_locations:
+    plt.axvline(x=c, color='Gainsboro', alpha=0.5)
+plt.plot(radial_axis, np.zeros(len(radial_axis)), color='b', ls=':')
+plt.legend(loc='upper right')
+plt.axes().tick_params(which='both', labelsize=14)
+plt.axes().set_xlim(0, radial_length)
+plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+plt.axes().set_ylabel('Radial stress [MPa]', fontsize=16)
+plt.title('Stress at cauldron surface', fontsize=18)
+plt.show()
