@@ -17,7 +17,7 @@ from sympy.abc import s, t
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import math
-#from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, SymLogNorm
 #from scipy import interpolate
 #from scipy.ndimage import gaussian_filter
 
@@ -72,9 +72,15 @@ SE_2015 = np.ma.masked_where(se_2015==0, se_2015)
 
 SE_2012_restricted = SE_2012[1000:3500, 6000:10000] #slicing to restrict to only the area of Eastern Skafta (speeds up computation)
 SE_2015_restricted = SE_2015[1000:3500, 6000:10000]
+SE_2012_rest_fild = SE_2012_restricted.filled(fill_value=SE_2012_restricted.mean())
+SE_2015_rest_fild = SE_2015_restricted.filled(fill_value=SE_2015_restricted.mean())
 lon_restricted = lon_2015[6000:10000]
 lat_restricted = lat_2015[1000:3500]
 
+SE_2012_western = SE_2012[1800:3200, 2250:5000]
+SE_2015_western = SE_2015[1800:3200, 2250:5000]
+lon_western = lon_2015[2250:5000]
+lat_western = lat_2015[1800:3200]
 
 ## Compute and plot curvature of cauldron surface
 def savgol2d ( z, window_size, order, derivative=None): #based on SciPy Cookbook entry on savgol
@@ -173,6 +179,12 @@ def gaussian_curvature(Z):
 
 k_savgol = savgol2d(SE_2015_restricted, window_size=7, order=5, derivative='curvature')
 k_gaussian = gaussian_curvature(SE_2015_restricted)
+##Plot Gaussian curvature
 plt.figure()
-plt.contourf(lon_restricted[:], lat_restricted[:], k_gaussian, 100)
+plt.contourf(lon_western[:], lat_western[:], k_gaussian, norm=SymLogNorm(linthresh=0.03, linscale=0.03, vmin=k_gaussian.min(), vmax=k_gaussian.max()))
+plt.show()
+
+##Plot Savgol curvature
+plt.figure()
+plt.contourf(lon_restricted[3:-3], lat_restricted[3:-3], k_savgol, norm=SymLogNorm(linthresh=0.03, linscale=0.03, vmin=np.asarray(k_savgol).min(), vmax=np.asarray(k_savgol).max()))
 plt.show()
