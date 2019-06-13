@@ -5,7 +5,7 @@ import numpy as np
 import scipy.misc as scp
 import scipy.signal as signal
 from scipy import interpolate
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, distance_transform_edt
 import mpl_toolkits.basemap.pyproj as pyproj
 from osgeo import gdal
 from netCDF4 import Dataset
@@ -61,6 +61,27 @@ def read_ArcticDEM_nc(filename, return_grid=True):
     else:
         return se
 
+def NearestFill(data, mask=None):
+    """
+    Replace the value of masked 'data' cells (indicated by 'mask') 
+    by the value of the nearest valid data cell
+
+    Input:
+        data:    numpy array of any dimension
+        mask: a binary array of same shape as 'data'. True cells set where data
+                 value should be replaced.
+                 For a masked input array, use data.mask
+                 If None (default), use: mask  = np.isnan(data)
+
+    Output: 
+        Return a filled array. 
+    """
+
+    if mask is None: mask = np.isnan(data)
+
+    ind = distance_transform_edt(mask, return_distances=False, return_indices=True)
+    return data[tuple(ind)]
+
 skafta_region_path = 'Documents/6. MIT/Skaftar collapse/data/arcticDEM/'
 nc_20121015_path = skafta_region_path + 'subset_nc/SETSM_WV02_20121015_skaftar_east_ll.nc'
 nc_20151010_path = skafta_region_path + 'subset_nc/SETSM_WV02_20151010_skaftar_east_ll.nc'
@@ -72,8 +93,10 @@ SE_2015 = np.ma.masked_where(se_2015==0, se_2015)
 
 SE_2012_restricted = SE_2012[1000:3500, 6000:10000] #slicing to restrict to only the area of Eastern Skafta (speeds up computation)
 SE_2015_restricted = SE_2015[1000:3500, 6000:10000]
-SE_2012_rest_fild = SE_2012_restricted.filled(fill_value=SE_2012_restricted.mean())
-SE_2015_rest_fild = SE_2015_restricted.filled(fill_value=SE_2015_restricted.mean())
+#SE_2012_rest_fild = SE_2012_restricted.filled(fill_value=SE_2012_restricted.mean())
+#SE_2015_rest_fild = SE_2015_restricted.filled(fill_value=SE_2015_restricted.mean())
+SE_2012_rest_fild = NearestFill(SE_2012_restricted, mask=SE_2012_restricted.mask)
+SE_2015_rest_fild = NearestFill(SE_2015_restricted, mask=SE_2015_restricted.mask)
 lon_restricted = lon_2015[6000:10000]
 lat_restricted = lat_2015[1000:3500]
 
@@ -177,7 +200,7 @@ def gaussian_curvature(Z):
     K = (Zxx * Zyy - (Zxy ** 2)) /  (1 + (Zx ** 2) + (Zy **2)) ** 2             
     return K
 
-k_savgol = savgol2d(SE_2015_restricted, window_size=7, order=5, derivative='curvature')
+k_savgol = savgol2d(SE_2015_rest_fild, window_size=7, order=5, derivative='curvature')
 k_gaussian = gaussian_curvature(SE_2015_restricted)
 ##Plot Gaussian curvature
 plt.figure()
