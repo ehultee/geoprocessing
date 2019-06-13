@@ -164,7 +164,7 @@ cauldron_center_latlon = (-17.5158322984487, 64.48773309819093) #ginput selectio
 cauldron_center = Point(pyproj.transform(wgs84, hjorsey, cauldron_center_latlon[0], cauldron_center_latlon[1]))
 cauldron_radius = 1540 #m, based on previous calculation with centroid
 
-nradii = 100
+nradii = 99
 res = int(np.floor(nradii/4)) #choose resolution for Shapely buffer based on how many sample points we want
 #cauldron_radius = np.mean([cauldron_center.distance(p) for p in transformed_mp])
 radial_buffer = cauldron_center.buffer(distance = cauldron_radius, resolution=res) #set of points at distance R from the centroid
@@ -227,6 +227,15 @@ for k in radial_curvature_2015.keys():
             crevasse_locations.append(radial_axis[i])
             cl_dict[k].append(radial_axis[i])
 
+crevasse_locations_12 = [] #compare to 2012 / pre-collapse surface
+cl_dict_12 = {} 
+for k in radial_curvature_2012.keys():
+    curv_12_comp = radial_curvature_2012[k]
+    cl_dict_12[k] = []
+    for i in range(len(curv_12_comp)):
+        if abs(curv_12_comp[i])>10:    
+            crevasse_locations_12.append(radial_axis[i])
+            cl_dict_12[k].append(radial_axis[i])
 
 ## Set up analytical profile
 class Ice(object):
