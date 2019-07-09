@@ -208,24 +208,34 @@ for j, radial_pt in enumerate(radial_pts_latlon):
 
 radial_curvature_2012 = {}
 radial_curvature_2015 = {}
-savgol_window = 7
-savgol_polyorder = 5
+#savgol_window = 7
+#savgol_polyorder = 5
+#for k in se_radii_2012.keys():
+#    radial_curvature_2012[k] = savgol_filter(se_radii_2012[k], savgol_window, savgol_polyorder, deriv=2)
+#    radial_curvature_2015[k] = savgol_filter(se_radii_2015[k], savgol_window, savgol_polyorder, deriv=2)
+## Do with radial gradient instead
 for k in se_radii_2012.keys():
-    radial_curvature_2012[k] = savgol_filter(se_radii_2012[k], savgol_window, savgol_polyorder, deriv=2)
-    radial_curvature_2015[k] = savgol_filter(se_radii_2015[k], savgol_window, savgol_polyorder, deriv=2)
+    radial_curvature_2012[k] = np.gradient(np.gradient(se_radii_2012[k]))
+    radial_curvature_2015[k] = np.gradient(np.gradient(se_radii_2015[k]))
+    
 
 radial_length = haversine(radial_pts_latlon[0][::-1], center_latlon[::-1])
 radial_axis = np.linspace(0, radial_length, num=nsamples)
 
 crevasse_locations = []
 cl_dict = {} #dictionary to sort crevasse locations by azimuth
+lower_SE_limit = SE_2015.min() #lowest surface elevation value we believe, for testing curvature peaks raised by nodata areas
+testradius = 3 #how far around suspect point we want to check. determines speed.
 for k in radial_curvature_2015.keys():
     curv_vals = radial_curvature_2015[k]
+    SE_vals = se_radii_2015[k]
     cl_dict[k] = []
-    for i in range(len(curv_vals)):
-        if abs(curv_vals[i])>10:    
-            crevasse_locations.append(radial_axis[i])
-            cl_dict[k].append(radial_axis[i])
+    for i in range(len(curv_vals)-testradius):
+        test_validity = [SE_vals[i+j]>lower_SE_limit for j in range(-1*testradius, testradius)] #check whether this is an area of no data
+        if abs(curv_vals[i])>5: #candidate crevasse
+            if sum(test_validity)==len(test_validity): # if all surrounding values are valid data
+                crevasse_locations.append(radial_axis[i])
+                cl_dict[k].append(radial_axis[i])
 
 crevasse_locations_12 = [] #compare to 2012 / pre-collapse surface
 cl_dict_12 = {} 
@@ -395,17 +405,17 @@ class Cauldron(Ice):
 #initial_surf_val = np.mean((sevals_2012[0], sevals_2012[-1])) #surface elevation at edges before loading
 initial_surf = interpolate.interp1d(radial_axis, se_radii_2012[0], kind='quadratic') #will have matching length as long as num=npoints in x_cylcoords above
 ESkafta = Cauldron(name='Eastern_Skafta', initial_surface = lambda x: max(se_radii_2012[0]), radius = radial_length)
-ESkafta.set_viscoelastic_bendingmod()
+#ESkafta.set_viscoelastic_bendingmod()
 
-#stress_array = [ESkafta.elastic_stress(x) for x in radial_axis]
-##elas_profile_array = [ESkafta.elastic_beam_profile(x) for x in radial_axis]
-#LL_profile_array = [ESkafta.LL_profile(x) for x in radial_axis]
+stress_array = [ESkafta.elastic_stress(x) for x in radial_axis]
+#elas_profile_array = [ESkafta.elastic_beam_profile(x) for x in radial_axis]
+LL_profile_array = [ESkafta.LL_profile(x) for x in radial_axis]
 #nseconds = 5*24*60*60 #number of seconds in the roughly 5-day collapse period
 #times = np.arange(0, nseconds, step=86400)
 #ve_profile_series = [[ESkafta.viscoelastic_profile(x, t0) for x in radial_axis] for t0 in times]
 #
 #elas_beam_stress = [ESkafta.elastic_stress(x, config='beam') for x in radial_axis]
-#elas_plate_stress = [ESkafta.elastic_stress(x, config='radial_plate') for x in radial_axis]
+elas_plate_stress = [ESkafta.elastic_stress(x, config='radial_plate') for x in radial_axis]
 #ve_plate_stress_min = [ESkafta.viscoelastic_stress(x, times[0]) for x in radial_axis]
 #ve_plate_stress_max = [ESkafta.viscoelastic_stress(x, times[4]) for x in radial_axis]
 #ve_bendingmod_series = [ESkafta.symbolic_ve_D(t0) for t0 in times]
@@ -414,29 +424,33 @@ ESkafta.set_viscoelastic_bendingmod()
 ## Make figures
 
 cmap = cm.get_cmap('winter_r')
-#colors = cmap([0.1, 0.2, 0.3, 0.5, 0.7, 0.9])
+colors = cmap([0.1, 0.2, 0.3, 0.5, 0.7, 0.9])
 #colors = cmap(np.linspace(0.1, 0.9, num=len(times)+1))
 
 
-for j in se_radii_2012.keys()[::10]:
+for j in (59, 88, 92):
     plt.figure('Radial profile {}'.format(j))
     plt.plot(radial_axis, se_radii_2012[j], ls='-.') #, label='15 Oct 2012'
     plt.plot(radial_axis, se_radii_2015[j], ls='-') #, label='10 Oct 2015'
-#plt.fill_between(radial_axis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-#plt.fill_between(radial_axis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
-#plt.legend(loc='lower right')
-plt.axes().set_aspect(1)
-plt.axes().set_xlim(0, radial_length)
-plt.axes().set_ylim(1400, 1800)
-#plt.axes().set_yticks([1550, 1600, 1650, 1700])
-#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
-plt.axes().tick_params(which='both', labelsize=14)
-#plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
-plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
-plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
-plt.title('Eastern Skafta cauldron radial samples', fontsize=18)
-plt.show()
-##
+    c_locs = cl_dict[j] #crevasses associated with this radial transect
+    for c in c_locs:
+        idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
+        plt.axvline(x=c, color='k', alpha=0.5)
+    #plt.fill_between(radial_axis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+    #plt.fill_between(radial_axis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+    #plt.legend(loc='lower right')
+    plt.axes().set_aspect(1)
+    plt.axes().set_xlim(0, radial_length)
+    plt.axes().set_ylim(1400, 1800)
+    #plt.axes().set_yticks([1550, 1600, 1650, 1700])
+    #plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+    plt.axes().tick_params(which='both', labelsize=14)
+    #plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+    plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+    plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
+    plt.title('Eastern Skafta cauldron radial samples', fontsize=18)
+    plt.show()
+
 plt.figure('Radial curvature')
 for j in radial_curvature_2015.keys():
     #plt.plot(radial_axis, radial_curvature_2012[j], ls='-.') #, label='15 Oct 2012'
@@ -455,25 +469,25 @@ plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
 plt.axes().set_ylabel('Surface curvature', fontsize=16)
 plt.title('Eastern Skafta cauldron radial curvature', fontsize=18)
 plt.show()
-#
-#plt.figure('Elastic only')
-#plt.plot(radial_axis, se_radii_2012[0], color='k', ls='-.') #, label='15 Oct 2012'
-#plt.plot(radial_axis, se_radii_2015[0], color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
-##plt.plot(radial_axis, elas_profile_array, color='r', ls=':', label='Elastic beam')
-#plt.plot(radial_axis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
-#plt.fill_between(radial_axis, se_radii_2012[0], se_radii_2015[0], color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-#plt.fill_between(radial_axis, se_radii_2015[0], (plt.axes().get_ylim()[0]), color='Azure')
-#plt.legend(loc='lower left')
-#plt.axes().set_aspect(5)
-#plt.axes().set_xlim(0, radial_length)
-##plt.axes().set_yticks([1550, 1600, 1650, 1700])
-##plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
-#plt.axes().tick_params(which='both', labelsize=14)
-##plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
-#plt.axes().set_xlabel('Along-transect distance [km]', fontsize=16)
-#plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
-#plt.title('Eastern Skafta cauldron radial transect: observed, ideal elastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
-#plt.show()
+
+plt.figure('Elastic only')
+plt.plot(radial_axis, se_radii_2012[0], color='k', ls='-.') #, label='15 Oct 2012'
+plt.plot(radial_axis, se_radii_2015[0], color='k', ls='-', label='Obs.') #, label='10 Oct 2015'
+#plt.plot(radial_axis, elas_profile_array, color='r', ls=':', label='Elastic beam')
+plt.plot(radial_axis, LL_profile_array, color=colors[0], lw=2, label='Elastic plate')
+plt.fill_between(radial_axis, se_radii_2012[0], se_radii_2015[0], color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+plt.fill_between(radial_axis, se_radii_2015[0], (plt.axes().get_ylim()[0]), color='Azure')
+plt.legend(loc='lower left')
+plt.axes().set_aspect(5)
+plt.axes().set_xlim(0, radial_length)
+#plt.axes().set_yticks([1550, 1600, 1650, 1700])
+#plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+plt.axes().tick_params(which='both', labelsize=14)
+#plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+plt.axes().set_xlabel('Along-transect distance [km]', fontsize=16)
+plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
+plt.title('Eastern Skafta cauldron radial transect: observed, ideal elastic. E={:.1E}'.format(ESkafta.youngmod), fontsize=18)
+plt.show()
 ##plt.savefig('Skafta-transect-aspect_5.png', transparent=True)
 #
 #plt.figure('Viscoelastic progression')
@@ -498,23 +512,27 @@ plt.show()
 #plt.show()
 #
 #
-#plt.figure('Stress comparison')
-#plt.plot(radial_axis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
+plt.figure('Stress comparison')
+plt.plot(radial_axis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
 #plt.plot(radial_axis, 1E-6*np.array(ve_plate_stress_max), color='k', ls='-.', lw=2, label='Viscoelastic plate, t={} days'.format(np.ceil(max(times)/86400)))
-#stress_norm = mpl.colors.Normalize(vmin = -1*max(ve_plate_stress_max), vmax = max(ve_plate_stress_max))
+stress_norm = mpl.colors.Normalize(vmin = -1*max(elas_plate_stress), vmax = max(elas_plate_stress))
 #for c in crevasse_locations:
-#    idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
-#    stress_scale = stress_norm(ve_plate_stress_max[idx]) #norm nearest stress val versus maximum tensile stress
-#    stress_color = cm.get_cmap('coolwarm')(stress_scale)
-#    plt.axvline(x=c, color=stress_color, alpha=0.5)
-#plt.plot(radial_axis, np.zeros(len(radial_axis)), color='b', ls=':')
-#plt.legend(loc='upper right')
-#plt.axes().tick_params(which='both', labelsize=14)
-#plt.axes().set_xlim(0, radial_length)
-#plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
-#plt.axes().set_ylabel('Radial stress [MPa]', fontsize=16)
-#plt.title('Stress at cauldron surface', fontsize=18)
-#plt.show()
+for k in cl_dict.keys():
+    c_locs = cl_dict[k]
+    for c in c_locs:
+        idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
+        stress_scale = stress_norm(elas_plate_stress[idx]) #norm nearest stress val versus maximum tensile stress
+        stress_color = cm.get_cmap('coolwarm')(stress_scale)
+        plt.axvline(x=c, color=stress_color, alpha=0.5)
+        plt.annotate(s=str(k), xy=(c, 0)) #label crevasse line with which azimuth produced it
+plt.plot(radial_axis, np.zeros(len(radial_axis)), color='b', ls=':')
+plt.legend(loc='upper right')
+plt.axes().tick_params(which='both', labelsize=14)
+plt.axes().set_xlim(0, radial_length)
+plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+plt.axes().set_ylabel('Radial stress [MPa]', fontsize=16)
+plt.title('Stress at cauldron surface', fontsize=18)
+plt.show()
 #
 ### individual plots per azimuth
 #for k in range(70, 85):
