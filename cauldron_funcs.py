@@ -170,7 +170,6 @@ class Cauldron(Ice):
         
         return ve_stress_rr
 
-
 ##------------------------
 ## File I/O and processing
 ##------------------------
@@ -213,3 +212,25 @@ def read_ArcticDEM_nc(filename, return_grid=True):
         return lon, lat, se
     else:
         return se
+
+
+def NearestFill(data, mask=None):
+    """
+    Replace the value of masked 'data' cells (indicated by 'mask') 
+    by the value of the nearest valid data cell
+
+    Input:
+        data:    numpy array of any dimension
+        mask: a binary array of same shape as 'data'. True cells set where data
+                 value should be replaced.
+                 For a masked input array, use data.mask
+                 If None (default), use: mask  = np.isnan(data)
+
+    Output: 
+        Return a filled array. 
+    """
+
+    if mask is None: mask = np.isnan(data)
+
+    ind = distance_transform_edt(mask, return_distances=False, return_indices=True)
+    return data[tuple(ind)]
