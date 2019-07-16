@@ -9,78 +9,14 @@ from scipy.ndimage import gaussian_filter, distance_transform_edt
 import mpl_toolkits.basemap.pyproj as pyproj
 from osgeo import gdal
 from netCDF4 import Dataset
-from sympy.integrals.transforms import inverse_laplace_transform
-from sympy import Symbol
-from sympy.abc import s, t
 #import shapefile
 #import datetime
 import matplotlib.pyplot as plt
 from matplotlib import cm
-import math
 from matplotlib.colors import LogNorm, SymLogNorm
 #from scipy import interpolate
 #from scipy.ndimage import gaussian_filter
-
-## Functions to read in surface from ArcticDEM - as GeoTIFF and NetCDF
-def read_ArcticDEM_tif(filename, return_grid=True, return_proj=False):
-    """Extract x, y, v from an ArcticDEM GeoTIFF"""
-    ds = gdal.Open(filename)
-    ncols = ds.RasterXSize
-    nrows = ds.RasterYSize
-    
-    geotransform = ds.GetGeoTransform()
-    xOrigin = geotransform[0]
-    xPix = geotransform[1] #pixel width in x-direction
-    yOrigin = geotransform[3]
-    yPix = geotransform[5] #pixel width in y-direction
-    
-    lons = xOrigin + np.arange(0, ncols)*xPix
-    lats = yOrigin + np.arange(0, nrows)*yPix
-    
-    x, y = np.meshgrid(lons, lats)
-    
-    hband = ds.GetRasterBand(1)
-    harr = hband.ReadAsArray()
-    
-    if return_grid and return_proj:
-        return x, y, harr, ds.GetProjection()
-    elif return_grid:
-        return x, y, harr
-    else:
-        return harr
-    
-
-def read_ArcticDEM_nc(filename, return_grid=True):
-    fh = Dataset(filename, mode='r')
-    lon = fh.variables['lon'][:].copy() #longitude
-    lat = fh.variables['lat'][:].copy() #latitude
-    se = fh.variables['Band1'][:].copy() #assuming the variable called "GDAL Band Number 1" is actually surface elevation
-    
-    if return_grid:
-        return lon, lat, se
-    else:
-        return se
-
-def NearestFill(data, mask=None):
-    """
-    Replace the value of masked 'data' cells (indicated by 'mask') 
-    by the value of the nearest valid data cell
-
-    Input:
-        data:    numpy array of any dimension
-        mask: a binary array of same shape as 'data'. True cells set where data
-                 value should be replaced.
-                 For a masked input array, use data.mask
-                 If None (default), use: mask  = np.isnan(data)
-
-    Output: 
-        Return a filled array. 
-    """
-
-    if mask is None: mask = np.isnan(data)
-
-    ind = distance_transform_edt(mask, return_distances=False, return_indices=True)
-    return data[tuple(ind)]
+from cauldron_funcs import *
 
 skafta_region_path = 'Documents/6. MIT/Skaftar collapse/data/arcticDEM/'
 nc_20121015_path = skafta_region_path + 'subset_nc/SETSM_WV02_20121015_skaftar_east_ll.nc'
