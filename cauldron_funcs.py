@@ -30,7 +30,7 @@ class Ice(object):
     Other attributes:
         t_relax: Maxwell relaxation timescale 
     """
-    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 1E9, poisson_nu = 0.3, dyn_viscos = 1.5E13):
+    def __init__(self, g=9.8, rho_ice=920.0, youngmod = 1E9, poisson_nu = 0.3, dyn_viscos = 3E13):
         self.g = g
         self.rho_ice = rho_ice
         self.youngmod = youngmod
