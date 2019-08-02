@@ -187,13 +187,14 @@ crevasse_locations = []
 cl_dict = {} #dictionary to sort crevasse locations by azimuth
 lower_SE_limit = SE_2015.min() #lowest surface elevation value we believe, for testing curvature peaks raised by nodata areas
 testradius = 3 #how far around suspect point we want to check. determines speed.
+crevasse_curvature = 5 #value of curvature at which to treat as a potential crevasse.  Mean curvature is ~0.001, but many non-crevasse peaks around 0.1-1 range.
 for k in radial_curvature_2015.keys():
     curv_vals = radial_curvature_2015[k]
     SE_vals = se_radii_2015[k]
     cl_dict[k] = []
     for i in range(len(curv_vals)-testradius):
         test_validity = [SE_vals[i+j]>lower_SE_limit for j in range(-1*testradius, testradius)] #check whether this is an area of no data
-        if abs(curv_vals[i])>5: #candidate crevasse
+        if abs(curv_vals[i])>crevasse_curvature: #candidate crevasse
             if sum(test_validity)==len(test_validity): # if all surrounding values are valid data
                 crevasse_locations.append(radial_axis[i])
                 cl_dict[k].append(radial_axis[i])
@@ -204,7 +205,7 @@ for k in radial_curvature_2012.keys():
     curv_12_comp = radial_curvature_2012[k]
     cl_dict_12[k] = []
     for i in range(len(curv_12_comp)):
-        if abs(curv_12_comp[i])>10:    
+        if abs(curv_12_comp[i])>crevasse_curvature:    
             crevasse_locations_12.append(radial_axis[i])
             cl_dict_12[k].append(radial_axis[i])
     
@@ -235,28 +236,28 @@ colors = cmap([0.1, 0.2, 0.3, 0.5, 0.7, 0.9])
 #colors = cmap(np.linspace(0.1, 0.9, num=len(times)+1))
 
 
-for j in (59, 88, 92):
-    plt.figure('Radial profile {}'.format(j))
-    plt.plot(radial_axis, se_radii_2012[j], ls='-.') #, label='15 Oct 2012'
-    plt.plot(radial_axis, se_radii_2015[j], ls='-') #, label='10 Oct 2015'
-    c_locs = cl_dict[j] #crevasses associated with this radial transect
-    for c in c_locs:
-        idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
-        plt.axvline(x=c, color='k', alpha=0.5)
-    #plt.fill_between(radial_axis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-    #plt.fill_between(radial_axis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
-    #plt.legend(loc='lower right')
-    plt.axes().set_aspect(1)
-    plt.axes().set_xlim(0, radial_length)
-    plt.axes().set_ylim(1400, 1800)
-    #plt.axes().set_yticks([1550, 1600, 1650, 1700])
-    #plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
-    plt.axes().tick_params(which='both', labelsize=14)
-    #plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
-    plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
-    plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
-    plt.title('Eastern Skafta cauldron radial samples', fontsize=18)
-    plt.show()
+#for j in (59, 88, 92):
+#    plt.figure('Radial profile {}'.format(j))
+#    plt.plot(radial_axis, se_radii_2012[j], ls='-.') #, label='15 Oct 2012'
+#    plt.plot(radial_axis, se_radii_2015[j], ls='-') #, label='10 Oct 2015'
+#    c_locs = cl_dict[j] #crevasses associated with this radial transect
+#    for c in c_locs:
+#        idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
+#        plt.axvline(x=c, color='k', alpha=0.5)
+#    #plt.fill_between(radial_axis, sevals_2012, sevals_2015, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
+#    #plt.fill_between(radial_axis, sevals_2015, (plt.axes().get_ylim()[0]), color='Azure')
+#    #plt.legend(loc='lower right')
+#    plt.axes().set_aspect(1)
+#    plt.axes().set_xlim(0, radial_length)
+#    plt.axes().set_ylim(1400, 1800)
+#    #plt.axes().set_yticks([1550, 1600, 1650, 1700])
+#    #plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+#    plt.axes().tick_params(which='both', labelsize=14)
+#    #plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+#    plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+#    plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
+#    plt.title('Eastern Skafta cauldron radial samples', fontsize=18)
+#    plt.show()
 
 plt.figure('Radial curvature')
 for j in radial_curvature_2015.keys():
