@@ -320,7 +320,7 @@ plt.show()
 #plt.show()
 #
 #
-plt.figure('Stress comparison')
+plt.figure('Crevasse stresses')
 plt.plot(radial_axis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2, label='Elastic plate')
 #plt.plot(radial_axis, 1E-6*np.array(ve_plate_stress_max), color='k', ls='-.', lw=2, label='Viscoelastic plate, t={} days'.format(np.ceil(max(times)/86400)))
 stress_norm = mpl.colors.Normalize(vmin = -1*max(elas_plate_stress), vmax = max(elas_plate_stress))
@@ -331,12 +331,66 @@ for k in cl_dict.keys():
         idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
         stress_scale = stress_norm(elas_plate_stress[idx]) #norm nearest stress val versus maximum tensile stress
         stress_color = cm.get_cmap('coolwarm')(stress_scale)
-        plt.axvline(x=c, color=stress_color, alpha=0.5)
-        plt.annotate(s=str(k), xy=(c, 0)) #label crevasse line with which azimuth produced it
+        plt.axvline(x=c, color=stress_color, alpha=0.5, lw=2.0)
+        #plt.annotate(s=str(k), xy=(c, 0)) #label crevasse line with which azimuth produced it
 plt.plot(radial_axis, np.zeros(len(radial_axis)), color='b', ls=':')
 plt.legend(loc='upper right')
 plt.axes().tick_params(which='both', labelsize=14)
 plt.axes().set_xlim(0, radial_length)
+plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+plt.axes().set_ylabel('Radial stress [MPa]', fontsize=16)
+plt.title('Stress at cauldron surface', fontsize=18)
+plt.show()
+
+plt.figure('Crevasse stresses: outliers removed')
+plt.plot(radial_axis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2)
+#plt.plot(radial_axis, 1E-6*np.array(ve_plate_stress_max), color='k', ls='-.', lw=2, label='Viscoelastic plate, t={} days'.format(np.ceil(max(times)/86400)))
+stress_norm = mpl.colors.Normalize(vmin = -1*max(elas_plate_stress), vmax = max(elas_plate_stress))
+#for c in crevasse_locations:
+for k in cl_dict.keys():
+    c_locs = cl_dict[k]
+    if k == 61: #removes a crevasse indicated near 0 stress, when radial profile indicates clearly nonzero stress region
+        continue
+    for c in c_locs:
+        idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
+        stress_scale = stress_norm(elas_plate_stress[idx]) #norm nearest stress val versus maximum tensile stress
+        stress_color = cm.get_cmap('coolwarm')(stress_scale)
+        plt.axvline(x=c, color=stress_color, alpha=0.5, lw=2.0)
+        #plt.annotate(s=str(k), xy=(c, 0)) #label crevasse line with which azimuth produced it
+plt.plot(radial_axis, np.zeros(len(radial_axis)), color='b', ls=':')
+plt.legend(loc='upper right')
+plt.axes().tick_params(which='both', labelsize=14)
+plt.axes().set_xlim(0, radial_length)
+plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
+plt.axes().set_ylabel('Radial stress [MPa]', fontsize=16)
+plt.title('Stress at cauldron surface', fontsize=18)
+plt.show()
+
+# add annotations for zoomed-in first crevasses in each regime
+first_tensile_xy = (1059.1815555066858, -8.5192824780734817) #annotation location for first crevasse in tensile regime
+first_compressive_xy = (665.43883601615573, 14.305379369265324) #annotation location for first crevasse in compressive regime
+# plot with annotations
+plt.figure('First-in-regime crevasses')
+plt.plot(radial_axis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2)
+#plt.plot(radial_axis, 1E-6*np.array(ve_plate_stress_max), color='k', ls='-.', lw=2, label='Viscoelastic plate, t={} days'.format(np.ceil(max(times)/86400)))
+stress_norm = mpl.colors.Normalize(vmin = -1*max(elas_plate_stress), vmax = max(elas_plate_stress))
+#for c in crevasse_locations:
+for k in cl_dict.keys():
+    c_locs = cl_dict[k]
+    if k == 61: #removes a crevasse indicated near 0 stress, when radial profile indicates clearly nonzero stress region
+        continue
+    for c in c_locs:
+        idx = (np.abs(radial_axis - c)).argmin() #find index of closest radial value to crevasse location c
+        stress_scale = stress_norm(elas_plate_stress[idx]) #norm nearest stress val versus maximum tensile stress
+        stress_color = cm.get_cmap('coolwarm')(stress_scale)
+        plt.axvline(x=c, color=stress_color, alpha=0.5, lw=2.0)
+        #plt.annotate(s=str(k), xy=(c, 0)) #label crevasse line with which azimuth produced it
+plt.plot(radial_axis, np.zeros(len(radial_axis)), color='b', ls=':')
+plt.annotate(s='Compressive stress: 14.3 MPa', xy=first_compressive_xy, fontsize=14)
+plt.annotate(s='Tensile stress: -8.5 MPa', xy=first_tensile_xy, fontsize=14)
+plt.legend(loc='upper right')
+plt.axes().tick_params(which='both', labelsize=14)
+plt.axes().set_xlim(630, 1100)
 plt.axes().set_xlabel('Radial distance [m]', fontsize=16)
 plt.axes().set_ylabel('Radial stress [MPa]', fontsize=16)
 plt.title('Stress at cauldron surface', fontsize=18)
