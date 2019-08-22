@@ -367,8 +367,8 @@ plt.title('Stress at cauldron surface', fontsize=18)
 plt.show()
 
 # add annotations for zoomed-in first crevasses in each regime
-first_tensile_xy = (1059.1815555066858, -8.5192824780734817) #annotation location for first crevasse in tensile regime
-first_compressive_xy = (665.43883601615573, 14.305379369265324) #annotation location for first crevasse in compressive regime
+first_tensile_xy = (1058.081049934334, -8.4310432716652333) #annotation location for first crevasse in tensile regime
+first_compressive_xy = (664.37888645060593, 14.421886161521616) #annotation location for first crevasse in compressive regime
 # plot with annotations
 plt.figure('First-in-regime crevasses')
 plt.plot(radial_axis, 1E-6*np.array(elas_plate_stress), color='k', ls='-', lw=2)
@@ -386,8 +386,10 @@ for k in cl_dict.keys():
         plt.axvline(x=c, color=stress_color, alpha=0.5, lw=2.0)
         #plt.annotate(s=str(k), xy=(c, 0)) #label crevasse line with which azimuth produced it
 plt.plot(radial_axis, np.zeros(len(radial_axis)), color='b', ls=':')
-plt.annotate(s='Compressive stress: 14.3 MPa', xy=first_compressive_xy, fontsize=14)
-plt.annotate(s='Tensile stress: -8.5 MPa', xy=first_tensile_xy, fontsize=14)
+plt.scatter(first_tensile_xy[0], first_tensile_xy[1], marker='*', s=20, color='b')
+plt.scatter(first_compressive_xy[0], first_compressive_xy[1], marker='*', s=20, color='r')
+#plt.annotate(s='Compressive stress: 14.4 MPa', xy=first_compressive_xy, fontsize=14)
+#plt.annotate(s='Tensile stress: -8.4 MPa', xy=first_tensile_xy, fontsize=14)
 plt.legend(loc='upper right')
 plt.axes().tick_params(which='both', labelsize=14)
 plt.axes().set_xlim(630, 1100)
