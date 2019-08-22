@@ -142,7 +142,7 @@ def plot_elastic_transect(in_dict, colormap=cm.get_cmap('winter_r')):
     return fig #return the figure instance so it can be modified
     
 
-def plot_VE_transect(in_dict, colormap=cm.get_cmap('winter_r')):
+def plot_VE_transect(in_dict, colormap=cm.get_cmap('winter_r'), make_legend=False, ylim_lower=1520):
     """Read in quantities and plot a viscoelastic progression from a transect dictionary
     Arguments:
         in_dict = a dictionary from sample_transect
@@ -178,14 +178,18 @@ def plot_VE_transect(in_dict, colormap=cm.get_cmap('winter_r')):
         labeltime = int(round(ti/86400)) #time in days
         plt.plot(xaxis, ve_profile_series[i][:], ls='--', color=colors[i+1], lw=2, label='Viscoelastic, t = {} days'.format(labeltime))
     plt.fill_between(xaxis, sevals_1, sevals_2, color='Gainsboro', hatch='/', edgecolor='DimGray', linewidth=0, alpha=0.7)
-    plt.fill_between(xaxis, sevals_2, (plt.axes().get_ylim()[0]), color='Azure')
-    plt.legend(loc='lower left')
+    plt.fill_between(xaxis, sevals_2, ylim_lower, color='Azure')
+    if make_legend:
+        plt.legend(loc='lower left')
+    else:
+        pass
     plt.axes().set_aspect(5)
     plt.axes().set_xlim(0, transect_length)
+    plt.axes().set_ylim(ylim_lower, 1700)
     plt.axes().set_yticks([1550, 1600, 1650, 1700])
-    #plt.axes().set_yticklabels(['1550', '1600', '1650', '1700'], fontsize=14)
+    plt.axes().set_yticklabels(['', '', '', ''], fontsize=14)
     plt.axes().tick_params(which='both', labelsize=14)
-    #plt.axes().set_xticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=14)
+    plt.axes().set_xticklabels([])
     plt.axes().set_xlabel('Along-transect distance [m]', fontsize=16)
     plt.axes().set_ylabel('Surface elevation [m a.s.l.]', fontsize=16)
     #plt.title('Eastern Skafta cauldron transect: observed, ideal elastic, ideal viscoelastic. E={:.1E}, eta={:.1E}'.format(ESkafta.youngmod, ESkafta.dyn_viscos), fontsize=18)
