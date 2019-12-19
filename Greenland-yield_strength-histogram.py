@@ -70,15 +70,16 @@ for i, c in enumerate(cleaned_taus):
 
 
 ## Plot histogram
-tau_bins = np.arange(5e3, 500e3, 5e3)
+tau_bins = np.arange(5, 500, 25)
 
 #np.histogram(opt_data['Optimal_taus'], bins=tau_bins)
 
-n, bins, patches = plt.hist(x=cleaned_taus, bins='auto', color='#0504aa',
+n, bins, patches = plt.hist(x=0.001*np.array(cleaned_taus), bins=tau_bins, color='#0504aa',
                             alpha=0.7, rwidth=0.85)
 plt.grid(axis='y', alpha=0.75)
 plt.xlabel('Yield strength [kPa]', fontsize=18)
 plt.ylabel('Frequency', fontsize=18)
+plt.axes().tick_params(which='both', labelsize=16)
 plt.title('Optimal yield strengths of Greenland outlets')
 #plt.text(23, 45, r'$\mu=15, b=3$')
 maxfreq = n.max()
